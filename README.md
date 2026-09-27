@@ -34,7 +34,10 @@ also name the surviving ID. A retired incident alias retrieves the surviving
 incident's combined history while each entry retains the incident ID it had
 when recorded. Existing databases start with an empty history; earlier actions
 cannot be reconstructed.
-`/health` is unauthenticated. OpenAPI is available at `/docs`.
+`/health` is unauthenticated liveness. `/ready` is unauthenticated readiness:
+it returns 200 only when the API key is configured and the SQLite incident
+store is accessible, or 503 with a generic detail otherwise. The container
+health check uses `/ready`. OpenAPI is available at `/docs`.
 Responses carry an `X-Request-ID`; structured request logs contain that ID,
 route, status, and duration without alert bodies or API keys. The Wazuh
 ingestion endpoint rejects bodies larger than 1 MiB with HTTP 413, including

@@ -110,6 +110,19 @@ class SQLiteStore:
         finally:
             conn.close()
 
+    def ready(self) -> bool:
+        try:
+            conn = sqlite3.connect(self.path, timeout=1)
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                conn.execute("SELECT 1 FROM incidents LIMIT 1")
+                conn.rollback()
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            return False
+        return True
+
     def put_event(
         self, conn: sqlite3.Connection, event: SecurityEvent
     ) -> tuple[SecurityEvent, bool, str | None]:
