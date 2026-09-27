@@ -1,4 +1,7 @@
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from adaptive_security.domain.events import EntityRef, EventCategory, SecurityEvent
 from adaptive_security.evaluation import EvaluationCase, evaluate
@@ -52,3 +55,18 @@ def test_evaluation_isolates_cases_and_counts_benign_lookalikes() -> None:
         "precision": 0.5,
         "recall": 0.5,
     }
+
+
+def test_evaluation_cli_rejects_invalid_case_without_echoing_telemetry(tmp_path: Path) -> None:
+    cases = tmp_path / "cases.jsonl"
+    cases.write_text('{"case_id":"private-secret","events":"invalid"}\n')
+    script = Path(__file__).resolve().parents[1] / "scripts" / "evaluate_signal.py"
+    result = subprocess.run(
+        [sys.executable, str(script), str(cases)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "invalid case at line 1" in result.stderr
+    assert "private-secret" not in result.stderr
