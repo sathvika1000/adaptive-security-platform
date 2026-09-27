@@ -255,3 +255,37 @@ def test_history_follows_merge_aliases(tmp_path: Path) -> None:
         assert history[1]["action"] == "merged"
         assert history[1]["merged_into"] == ids[0]
         assert history[1]["event_id"] == "bridge-2"
+
+
+def test_incident_and_history_pagination(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "events.db"), "secret"))
+    headers = {"x-api-key": "secret"}
+    ids = []
+    for index, minute in enumerate((0, 40, 80)):
+        client.post("/v1/events/wazuh", json=alert(f"first-{index}", minute),
+                    headers=headers)
+        incident = client.post("/v1/events/wazuh", json=alert(f"second-{index}", minute + 5),
+                               headers=headers).json()["incident"]
+        ids.append(incident["incident_id"])
+
+    listed = client.get("/v1/incidents", headers=headers).json()
+    assert [item["incident_id"] for item in listed] == sorted(ids)
+    pages = [client.get(f"/v1/incidents?limit=1&offset={offset}",
+                        headers=headers).json() for offset in range(4)]
+    assert pages == [[incident] for incident in listed] + [[]]
+    for query in ("limit=0", "limit=101", "offset=-1", "limit=oops"):
+        assert client.get(f"/v1/incidents?{query}", headers=headers).status_code == 422
+
+    incident_id = ids[0]
+    close_url = f"/v1/incidents/{incident_id}/close"
+    history_url = f"/v1/incidents/{incident_id}/history"
+    client.post(close_url, headers=headers)
+    client.post("/v1/events/wazuh", json=alert("reopen", 10), headers=headers)
+    client.post(close_url, headers=headers)
+    history = client.get(history_url, headers=headers).json()
+    assert [item["action"] for item in history] == ["closed", "reopened", "closed"]
+    history_pages = [client.get(f"{history_url}?limit=1&offset={offset}",
+                                headers=headers).json() for offset in range(4)]
+    assert history_pages == [[entry] for entry in history] + [[]]
+    for query in ("limit=0", "limit=101", "offset=-1"):
+        assert client.get(f"{history_url}?{query}", headers=headers).status_code == 422

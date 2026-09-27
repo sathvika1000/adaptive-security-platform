@@ -271,7 +271,9 @@ class SQLiteStore:
              event.source if event else None, event.event_id if event else None, merged_into),
         )
 
-    def incident_history(self, incident_id: str) -> list[IncidentTransition] | None:
+    def incident_history(
+        self, incident_id: str, limit: int = 100, offset: int = 0
+    ) -> list[IncidentTransition] | None:
         with self.transaction() as conn:
             incident = self.stored_incident(conn, incident_id)
             if incident is None:
@@ -282,8 +284,8 @@ class SQLiteStore:
                    FROM incident_transitions
                    WHERE incident_id = ? OR incident_id IN
                        (SELECT retired_id FROM incident_aliases WHERE current_id = ?)
-                   ORDER BY transition_id""",
-                (incident.incident_id, incident.incident_id),
+                   ORDER BY transition_id LIMIT ? OFFSET ?""",
+                (incident.incident_id, incident.incident_id, limit, offset),
             ).fetchall()
         return [IncidentTransition(
             transition_id=row[0], incident_id=row[1], action=row[2],
@@ -325,3 +327,11 @@ class SQLiteStore:
     def incidents(self) -> list[Incident]:
         with self.transaction() as conn:
             return self.stored_incidents(conn)
+
+    def incidents_page(self, limit: int, offset: int) -> list[Incident]:
+        with self.transaction() as conn:
+            rows = conn.execute(
+                "SELECT body FROM incidents ORDER BY incident_id LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
+        return [Incident.model_validate_json(row[0]) for row in rows]

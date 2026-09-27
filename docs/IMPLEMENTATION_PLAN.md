@@ -22,6 +22,7 @@
 - Indexed neighbor lookup limited to the connected correlation run.
 - Durable close/reopen/merge transition history, including request or event evidence
   and lookup through retired incident aliases.
+- Bounded, offset-based API pagination for incident listings and transition history.
 
 ## Current limits
 - Correlation remains a user/host authentication rule, not cross-category
@@ -35,7 +36,7 @@
 - Live Wazuh manager forwarding and ARM64 development topology are not yet validated.
 
 ## Next
-1. Bounded history/retention and identity-aware analyst actions.
+1. Event retention, long-run handling, and identity-aware analyst actions.
 2. Validate forwarding against a real Wazuh manager and document host access.
 3. Validate the Compose topology on Docker Desktop and add operational signals.
 4. Run both signal evaluations on permissioned benign lookalikes and malicious

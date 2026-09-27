@@ -4,9 +4,10 @@ import logging
 import os
 from collections.abc import Awaitable, Callable
 from time import perf_counter
+from typing import Annotated
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from pydantic import BaseModel
 from starlette.responses import Response
 
@@ -87,8 +88,11 @@ def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAP
         return event
 
     @app.get("/v1/incidents", response_model=list[Incident], dependencies=[Depends(authorize)])
-    def list_incidents() -> list[Incident]:
-        return store.incidents()
+    def list_incidents(
+        limit: Annotated[int, Query(ge=1, le=100)] = 100,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> list[Incident]:
+        return store.incidents_page(limit, offset)
 
     @app.get(
         "/v1/incidents/{incident_id}", response_model=Incident, dependencies=[Depends(authorize)]
@@ -104,8 +108,12 @@ def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAP
         response_model=list[IncidentTransition],
         dependencies=[Depends(authorize)],
     )
-    def get_incident_history(incident_id: str) -> list[IncidentTransition]:
-        history = store.incident_history(incident_id)
+    def get_incident_history(
+        incident_id: str,
+        limit: Annotated[int, Query(ge=1, le=100)] = 100,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> list[IncidentTransition]:
+        history = store.incident_history(incident_id, limit, offset)
         if history is None:
             raise HTTPException(status_code=404, detail="Incident not found")
         return history
