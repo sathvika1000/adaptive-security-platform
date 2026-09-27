@@ -8,9 +8,28 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 MAX_LINE = 1024 * 1024
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(
+        self, request: Request, response: object, code: int, message: str,
+        headers: object, newurl: str
+    ) -> None:
+        return None
+
+
+def send_alert(endpoint: str, key: str, alert: dict[str, Any]) -> None:
+    request = Request(
+        endpoint,
+        data=json.dumps(alert).encode(),
+        headers={"Content-Type": "application/json", "X-API-Key": key},
+        method="POST",
+    )
+    with build_opener(NoRedirect).open(request, timeout=10) as response:
+        response.read()
 
 
 def forward_once(
@@ -65,18 +84,8 @@ def main() -> None:
         parser.error("use HTTPS, or HTTP to a loopback address")
     endpoint = args.url.rstrip("/") + "/v1/events/wazuh"
 
-    def send(alert: dict[str, Any]) -> None:
-        request = Request(
-            endpoint,
-            data=json.dumps(alert).encode(),
-            headers={"Content-Type": "application/json", "X-API-Key": key},
-            method="POST",
-        )
-        with urlopen(request, timeout=10) as response:
-            response.read()
-
     while True:
-        forward_once(args.alerts, args.checkpoint, send)
+        forward_once(args.alerts, args.checkpoint, lambda alert: send_alert(endpoint, key, alert))
         if not args.follow:
             return
         time.sleep(1)
@@ -84,4 +93,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

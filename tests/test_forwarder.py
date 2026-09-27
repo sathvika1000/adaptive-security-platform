@@ -1,9 +1,12 @@
 import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from threading import Thread
+from urllib.error import HTTPError
 
 import pytest
 
-from adaptive_security.forwarder import forward_once
+from adaptive_security.forwarder import forward_once, send_alert
 
 
 def write_alerts(path: Path, ids: list[str], partial: bool = False) -> None:
@@ -49,3 +52,34 @@ def test_forwarder_retries_failed_delivery_and_handles_truncation(tmp_path: Path
     assert forward_once(alerts, checkpoint, lambda alert: seen.append(alert["id"])) == 1
     assert seen[-1] == "new"
 
+
+def test_transport_does_not_follow_redirect_with_api_key() -> None:
+    visited: list[str] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            visited.append(self.path)
+            self.send_response(302)
+            self.send_header("Location", "/capture")
+            self.end_headers()
+
+        def do_GET(self) -> None:
+            visited.append(self.path)
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with pytest.raises(HTTPError) as error:
+            send_alert(f"http://127.0.0.1:{server.server_port}/alerts", "secret", {"id": "one"})
+        assert error.value.code == 302
+        assert visited == ["/alerts"]
+    finally:
+        server.shutdown()
+        thread.join()
+        server.server_close()
