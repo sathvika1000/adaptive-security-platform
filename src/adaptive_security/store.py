@@ -10,6 +10,8 @@ from adaptive_security.domain.detections import DetectionSignal
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentStatus, IncidentTransition
 
+NEIGHBOR_PAGE_SIZE = 128
+
 
 def correlation_key(event: SecurityEvent) -> str | None:
     key = identity(event)
@@ -159,27 +161,28 @@ class SQLiteStore:
                 "SELECT event_time, body, incident_id FROM events "
                 f"WHERE correlation_key = ? AND (event_time, source, event_id) {comparison} "
                 f"(?, ?, ?) ORDER BY event_time {ordering}, source {ordering}, "
-                f"event_id {ordering} LIMIT 1"
+                f"event_id {ordering} LIMIT ?"
             )
             found: list[tuple[SecurityEvent, str | None]] = []
             cursor = event
             while True:
-                row = conn.execute(
+                rows = conn.execute(
                     query,
                     (encoded, cursor.event_time.astimezone(UTC).isoformat(),
-                     cursor.source, cursor.event_id),
-                ).fetchone()
-                if row is None:
+                     cursor.source, cursor.event_id, NEIGHBOR_PAGE_SIZE),
+                ).fetchall()
+                for row in rows:
+                    neighbor_time = datetime.fromisoformat(row[0])
+                    gap = (
+                        cursor.event_time - neighbor_time if before
+                        else neighbor_time - cursor.event_time
+                    )
+                    if gap > WINDOW:
+                        return found
+                    cursor = SecurityEvent.model_validate_json(row[1])
+                    found.append((cursor, row[2]))
+                if len(rows) < NEIGHBOR_PAGE_SIZE:
                     break
-                neighbor_time = datetime.fromisoformat(row[0])
-                gap = (
-                    cursor.event_time - neighbor_time if before
-                    else neighbor_time - cursor.event_time
-                )
-                if gap > WINDOW:
-                    break
-                cursor = SecurityEvent.model_validate_json(row[1])
-                found.append((cursor, row[2]))
             return found
 
         return [*reversed(neighbors(True)), (event, None), *neighbors(False)]
