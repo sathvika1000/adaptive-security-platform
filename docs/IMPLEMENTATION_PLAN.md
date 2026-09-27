@@ -15,6 +15,7 @@
 - Bounded Wazuh request bodies and structured request metadata with correlation IDs.
 - Case-level evaluation harness using the production ingestion path and labeled
   canonical event sequences.
+- Authenticated canonical event retrieval by source and event ID for signal evidence.
 
 ## Current limits
 - Correlation is a precise user/host authentication rule, not behavioral or

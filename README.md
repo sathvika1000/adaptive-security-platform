@@ -18,6 +18,8 @@ uvicorn adaptive_security.api:app --host 127.0.0.1 --port 8000
 POST one Wazuh alert JSON to `/v1/events/wazuh` with `X-API-Key`.
 The response includes the canonical event and an incident when correlated.
 GET `/v1/incidents` or `/v1/incidents/{incident_id}` with the same header.
+GET `/v1/events/{source}/{event_id}` retrieves stored canonical evidence;
+for current Wazuh signals use `wazuh` as the source and each evidence ID.
 `POST /v1/incidents/{incident_id}/close` closes an incident. A newly ingested
 failure with an event time later than the incident's previous last-seen time
 reopens it; older evidence leaves it closed. Repeated closes are idempotent.

@@ -6,6 +6,8 @@ from fastapi.testclient import TestClient
 from adaptive_security.api import create_app
 from adaptive_security.detection.auth_sequence import detect_auth_sequence
 from adaptive_security.domain.events import EntityRef, EventCategory, SecurityEvent
+from adaptive_security.service import IngestionService
+from adaptive_security.store import SQLiteStore
 
 
 def event(event_id: str, minute: int, outcome: str) -> SecurityEvent:
@@ -64,3 +66,18 @@ def test_signal_is_persisted_in_retrievable_incident(tmp_path: Path) -> None:
     restarted = TestClient(create_app(path, "secret"))
     stored = restarted.get(f"/v1/incidents/{incident['incident_id']}", headers=headers)
     assert stored.json()["signals"] == incident["signals"]
+    for event_id in incident["signals"][0]["evidence_event_ids"]:
+        evidence = restarted.get(f"/v1/events/wazuh/{event_id}", headers=headers)
+        assert evidence.status_code == 200
+        assert evidence.json()["event_id"] == event_id
+        assert evidence.json()["category"] == "authentication"
+    assert restarted.get("/v1/events/wazuh/a").status_code == 401
+    assert restarted.get("/v1/events/other/a", headers=headers).status_code == 404
+    assert restarted.get("/v1/events/wazuh/missing", headers=headers).status_code == 404
+
+    other = event("a", 0, "failure").model_copy(
+        update={"source": "other", "category": EventCategory.OTHER}
+    )
+    IngestionService(SQLiteStore(path)).ingest(other)
+    assert restarted.get("/v1/events/other/a", headers=headers).json()["source"] == "other"
+    assert restarted.get("/v1/events/wazuh/a", headers=headers).json()["source"] == "wazuh"
