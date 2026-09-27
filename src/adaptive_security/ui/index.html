@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Incidents · Adaptive Security Platform</title>
+  <link rel="stylesheet" href="/ui/style.css">
+  <script defer src="/ui/app.js"></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">◈</span> Adaptive Security Platform</div>
+    <span class="eyebrow">Local analyst view</span>
+  </header>
+  <div class="shell">
+    <section class="access" aria-labelledby="access-title">
+      <div>
+        <p class="kicker">Evidence first</p>
+        <h1 id="access-title">Incident workspace</h1>
+        <p>Review correlated activity, canonical events, and lifecycle history.</p>
+      </div>
+      <form id="access-form" autocomplete="off">
+        <label for="api-key">Platform API key</label>
+        <div class="access-controls">
+          <input id="api-key" type="password" autocomplete="off" spellcheck="false" required>
+          <button type="submit" class="primary">Load incidents</button>
+          <button type="button" id="forget-key" class="secondary" hidden>Forget key</button>
+        </div>
+        <p class="hint">The key stays in this page’s memory until you leave or forget it.</p>
+      </form>
+    </section>
+    <p id="message" class="message" role="status" aria-live="polite"></p>
+    <main id="workspace" class="workspace" hidden>
+      <section class="list-panel" aria-labelledby="incidents-title">
+        <div class="section-head">
+          <div><p class="kicker">Queue</p><h2 id="incidents-title">Incidents</h2></div>
+          <button type="button" id="refresh" class="secondary">Refresh</button>
+        </div>
+        <div id="incident-list" class="incident-list"></div>
+        <div class="pager">
+          <button type="button" id="incidents-prev" class="secondary">Previous</button>
+          <span id="incidents-page"></span>
+          <button type="button" id="incidents-next" class="secondary">Next</button>
+        </div>
+      </section>
+      <section class="detail-panel" aria-labelledby="detail-title">
+        <div id="detail-empty" class="empty-state">
+          <span class="empty-icon" aria-hidden="true">◎</span>
+          <h2 id="detail-title">Select an incident</h2>
+          <p>Its normalized evidence and transition history will appear here.</p>
+        </div>
+        <div id="detail" hidden>
+          <p class="kicker">Investigation</p>
+          <h2 id="selected-title"></h2>
+          <p id="selected-meta" class="muted"></p>
+          <div id="selected-entities" class="tags"></div>
+          <div id="selected-signals"></div>
+          <div class="section-head timeline-head"><h3>Event timeline</h3><span id="event-count" class="muted"></span></div>
+          <div id="event-list" class="event-list"></div>
+          <div class="pager">
+            <button type="button" id="events-prev" class="secondary">Previous</button>
+            <span id="events-page"></span>
+            <button type="button" id="events-next" class="secondary">Next</button>
+          </div>
+          <h3 class="history-head">Lifecycle history</h3>
+          <div id="history-list" class="history-list"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

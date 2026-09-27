@@ -70,6 +70,18 @@ volume to reset the demonstration. No Wazuh server is bundled. For Docker
 Desktop and the official Wazuh single-node stack, follow
 [the Wazuh setup guide](docs/WAZUH_DOCKER_DESKTOP.md).
 
+## Incident workspace
+
+Open `http://127.0.0.1:8000/ui` on the Docker Desktop host and enter the
+platform API key. The read-only page lists incidents, normalized event evidence,
+signals, and lifecycle transitions. It calls the same authenticated API; the
+key stays only in page memory and is cleared when you leave or choose **Forget
+key**. It is never placed in a URL or browser storage. Keep the loopback bind
+and do not share the key. The page shows 20 incidents or events at a time and
+the first 100 lifecycle transitions for a selected incident. Refresh to see
+new alerts. The shared API key does not identify individual analysts, so the
+page has no action controls.
+
 ## Forward Wazuh alerts
 
 Wazuh writes JSON alerts to `/var/ossec/logs/alerts/alerts.json` on the

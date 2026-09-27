@@ -3,11 +3,13 @@ import json
 import logging
 import os
 from collections.abc import Awaitable, Callable
+from importlib.resources import files
 from time import perf_counter
 from typing import Annotated
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from starlette.responses import Response
 
@@ -25,6 +27,16 @@ class IngestionResult(BaseModel):
 
 
 logger = logging.getLogger("uvicorn.error")
+_UI_HEADERS = {
+    "Cache-Control": "no-store",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": (
+        "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; "
+        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    ),
+}
 
 
 def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAPI:
@@ -75,6 +87,19 @@ def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAP
         if not key or not store.ready():
             raise HTTPException(status_code=503, detail="Service unavailable")
         return {"status": "ready"}
+
+    @app.get("/ui", include_in_schema=False)
+    def incident_view() -> HTMLResponse:
+        page = files("adaptive_security").joinpath("ui", "index.html").read_text()
+        return HTMLResponse(page, headers=_UI_HEADERS)
+
+    @app.get("/ui/{asset}", include_in_schema=False)
+    def incident_view_asset(asset: str) -> Response:
+        media_type = {"app.js": "text/javascript", "style.css": "text/css"}.get(asset)
+        if media_type is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        body = files("adaptive_security").joinpath("ui", asset).read_bytes()
+        return Response(body, media_type=media_type, headers=_UI_HEADERS)
 
     @app.post("/v1/events/wazuh", response_model=IngestionResult, dependencies=[Depends(authorize)])
     def ingest_wazuh_event(payload: WazuhAlert) -> IngestionResult:
