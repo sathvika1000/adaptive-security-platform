@@ -189,10 +189,10 @@ If no agent is installed, download and install the pinned ARM64 package:
 
 ```sh
 cd ~/Downloads
-curl -fL -O https://packages.wazuh.com/4.x/macos/wazuh-agent-4.14.8-1.arm64.pkg
-pkgutil --check-signature wazuh-agent-4.14.8-1.arm64.pkg
 (
   set -e
+  curl -fL -O https://packages.wazuh.com/4.x/macos/wazuh-agent-4.14.8-1.arm64.pkg
+  pkgutil --check-signature wazuh-agent-4.14.8-1.arm64.pkg
   umask 077
   printf "WAZUH_MANAGER='127.0.0.1'\n" > /tmp/wazuh_envs
   sudo installer -pkg wazuh-agent-4.14.8-1.arm64.pkg -target /
