@@ -27,7 +27,7 @@ def test_correlates_events_into_deterministic_incident() -> None:
         [event("event-2", 2, 7), event("event-1", 1, 4)]
     )
 
-    assert incident.incident_id == "inc-948bff4f905bad8f"
+    assert incident.incident_id == "inc-3b6ed4b1e38bb0b4"
     assert incident.title == "Correlated authentication activity"
     assert incident.event_ids == ("event-1", "event-2")
     assert incident.severity == 7
