@@ -38,6 +38,11 @@ class SQLiteStore:
             )"""
         )
         conn.execute(
+            """CREATE TABLE IF NOT EXISTS incident_aliases (
+                retired_id TEXT PRIMARY KEY, current_id TEXT NOT NULL
+            )"""
+        )
+        conn.execute(
             """CREATE TABLE IF NOT EXISTS auth_baselines (
                 correlation_key TEXT PRIMARY KEY, success_count INTEGER NOT NULL,
                 source_ips TEXT NOT NULL
@@ -183,6 +188,16 @@ class SQLiteStore:
             "UPDATE events SET incident_id = ? WHERE source = ? AND event_id = ?",
             [(incident.incident_id, event.source, event.event_id) for event in events],
         )
+        for retired_id in retired_ids:
+            conn.execute(
+                "UPDATE incident_aliases SET current_id = ? WHERE current_id = ?",
+                (incident.incident_id, retired_id),
+            )
+            conn.execute(
+                """INSERT INTO incident_aliases (retired_id, current_id) VALUES (?, ?)
+                   ON CONFLICT(retired_id) DO UPDATE SET current_id = excluded.current_id""",
+                (retired_id, incident.incident_id),
+            )
         conn.executemany(
             "DELETE FROM incidents WHERE incident_id = ?",
             [(incident_id,) for incident_id in retired_ids],
@@ -192,6 +207,13 @@ class SQLiteStore:
         row = conn.execute(
             "SELECT body FROM incidents WHERE incident_id = ?", (incident_id,)
         ).fetchone()
+        if row is None:
+            row = conn.execute(
+                """SELECT incidents.body FROM incident_aliases
+                   JOIN incidents ON incidents.incident_id = incident_aliases.current_id
+                   WHERE incident_aliases.retired_id = ?""",
+                (incident_id,),
+            ).fetchone()
         return Incident.model_validate_json(row[0]) if row else None
 
     def event(self, source: str, event_id: str) -> SecurityEvent | None:
@@ -214,7 +236,7 @@ class SQLiteStore:
             closed = incident.model_copy(update={"status": IncidentStatus.CLOSED})
             conn.execute(
                 "UPDATE incidents SET body = ? WHERE incident_id = ?",
-                (closed.model_dump_json(), incident_id),
+                (closed.model_dump_json(), closed.incident_id),
             )
             return closed
 
