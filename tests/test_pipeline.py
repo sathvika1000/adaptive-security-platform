@@ -118,6 +118,27 @@ def test_incident_id_survives_growth_late_alerts_and_restart(tmp_path: Path) -> 
     assert repeated.json()["incident"]["incident_id"] == incident_id
 
 
+def test_connected_run_scans_indexed_neighbors_in_pages(tmp_path: Path) -> None:
+    store = SQLiteStore(str(tmp_path / "events.db"))
+    connector = WazuhConnector()
+    with store.transaction() as conn:
+        for minute in (-40, *range(300), 400):
+            store.put_event(conn, connector.normalize(alert(f"event-{minute}", minute)))
+        anchor = connector.normalize(alert("event-150", 150))
+        statements: list[str] = []
+        conn.set_trace_callback(statements.append)
+        segment = store.connected_events(conn, anchor)
+        conn.set_trace_callback(None)
+
+    assert [event.event_id for event, _ in segment] == [
+        f"event-{minute}" for minute in range(300)
+    ]
+    neighbor_queries = [
+        sql for sql in statements if "SELECT event_time, body, incident_id FROM events" in sql
+    ]
+    assert len(neighbor_queries) == 4
+
+
 def test_bridge_merges_incidents_under_oldest_id(tmp_path: Path) -> None:
     client = TestClient(create_app(str(tmp_path / "events.db"), "secret"))
     headers = {"x-api-key": "secret"}

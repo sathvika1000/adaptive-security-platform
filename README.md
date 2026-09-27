@@ -162,11 +162,11 @@ formed an incident. Labels must account for benign first-seen IPs and the
 five-success cold start; synthetic fixtures alone cannot justify promotion.
 
 The POC indexes authentication events by user/host and event time. Each new
-event walks indexed neighbors only within its connected correlation run,
-then updates that run while preserving the ID of a matching incident as it
-grows or late events arrive. A long uninterrupted run still requires reading
-all of its members. Existing SQLite databases are migrated on startup without
-discarding incidents or status.
+event walks indexed neighbors in pages of 128 only within its connected
+correlation run, then updates that run while preserving the ID of a matching
+incident as it grows or late events arrive. A long uninterrupted run still
+requires reading all of its members and rebuilding its incident. Existing
+SQLite databases are migrated on startup without discarding incidents or status.
 If a late alert bridges two incidents, the older incident ID survives and the
 other ID is retired. High-volume retention and partitioning are future work.
 Merge retirement keeps a persistent alias for the retired ID. GET and close

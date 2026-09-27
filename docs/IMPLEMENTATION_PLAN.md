@@ -31,6 +31,8 @@
   including through retired incident aliases and across event sources.
 - Read-only local incident workspace with paginated queue and event timeline,
   signals, lifecycle history, and an in-memory API key.
+- Indexed correlation neighbors are read in pages of 128, reducing query
+  round trips on long connected authentication runs.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
@@ -38,8 +40,8 @@
 ## Current limits
 - Correlation remains a user/host authentication rule, not cross-category
   detection. The stateful novelty observation is shadow-only and has no
-  measured real-world precision. Long connected runs, unbounded event retention,
-  and unbounded per-identity known-IP sets limit throughput.
+  measured real-world precision. Long connected runs still rebuild full incidents;
+  unbounded event retention and per-identity known-IP sets limit throughput.
 - The sequence signal is deterministic. Its priority is a heuristic; precision
   on representative real benign and malicious samples has not yet been measured.
 - Merges preserve old links through aliases for newly retired IDs. The shared
@@ -49,7 +51,7 @@
   manager-decoded synthetic SSH logs, not a real login sequence.
 
 ## Next
-1. Event retention and bounded handling of long correlation runs.
+1. Event retention and bounded incident update work for long correlation runs.
 2. Identity-aware analyst actions before adding UI response controls.
 3. Run both signal evaluations on permissioned benign lookalikes and malicious
    samples before considering shadow signal promotion.
