@@ -25,6 +25,20 @@ IDs, the same `data.srcuser` and `agent.name`, and timestamps within 15 minutes.
 The second response contains an incident; restart the API and retrieve it.
 See `tests/test_pipeline.py` for exact payloads.
 
+With Docker Desktop, the application-only Compose stack uses a single
+Python 3.12 container and a named SQLite volume:
+
+```sh
+export ASP_API_KEY='replace-with-a-long-random-value'
+docker compose up --build -d
+python scripts/replay_demo.py
+docker compose down
+```
+
+The replay prints the incident ID and confirms retrieval. Compose binds only
+to localhost. The named volume survives `docker compose down`; use a fresh
+volume to reset the demonstration. No Wazuh server is bundled.
+
 ## Correlation contract and limits
 
 Only canonical authentication events with both user and host are eligible.
