@@ -39,17 +39,42 @@ The replay prints the incident ID and confirms retrieval. Compose binds only
 to localhost. The named volume survives `docker compose down`; use a fresh
 volume to reset the demonstration. No Wazuh server is bundled.
 
+## Forward Wazuh alerts
+
+Wazuh writes JSON alerts to `/var/ossec/logs/alerts/alerts.json` on the
+manager when JSON output is enabled. Run the forwarder on that host with
+read-only access to the alert file and a writable checkpoint directory:
+
+```sh
+export ASP_API_KEY='same-key-as-the-platform'
+python -m adaptive_security.forwarder /var/ossec/logs/alerts/alerts.json \
+  --checkpoint /var/lib/adaptive-security/alerts.cursor --follow \
+  --url https://platform.example.internal
+```
+
+It sends each complete JSON line to the API and checkpoints only after a
+successful response. A failed delivery or malformed alert stops at that line
+for diagnosis. Supervise and restart the command; duplicate deliveries are
+idempotent by source/event ID. Use HTTPS for a remote platform and keep the
+key outside source control. Run without `--follow` for a one-time replay.
+Rotation or truncation resets the cursor; alerts removed before reading
+cannot be recovered by this adapter. Live manager validation remains.
+
+Wazuh references: [alert management](https://documentation.wazuh.com/current/user-manual/manager/alert-management.html)
+and [server-side forwarding](https://documentation.wazuh.com/current/integrations-guide/index.html).
+
 ## Correlation contract and limits
 
 Only canonical authentication events with both user and host are eligible.
 A run of at least two events for the same user and host, including a failure,
-with no gap greater than 15 minutes between adjacent event times, forms one incident. Severity is
-the maximum event severity. Events are ordered by time, source and ID.
+with no gap greater than 15 minutes between adjacent event times, forms one
+incident. Severity is the maximum event severity. Events are ordered by time,
+source and ID.
 Duplicate source/ID ingestion returns the originally stored event.
 
 The POC recomputes incidents transactionally after each ingestion, so incident
 IDs can change as a run grows or late events arrive. This is suitable for small
 local datasets, not high-volume ingestion or analyst state. Incident status
-updates, paginated retrieval, retention, payload size limits, and live Wazuh
-transport are subsequent work. Deploy behind TLS and network controls; the
-shared API key is a POC boundary, not a multi-user authorization system.
+updates, paginated retrieval, and retention are subsequent work. Deploy behind
+TLS and network controls; the shared API key is a POC boundary, not a multi-user
+authorization system.
