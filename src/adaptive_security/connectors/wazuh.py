@@ -61,7 +61,9 @@ class WazuhConnector:
             if alert.agent.ip:
                 entities.append(EntityRef(type="ip", value=alert.agent.ip))
 
-        user = alert.data.get("srcuser") or alert.data.get("user")
+        # SSH decoders use dstuser for the account being accessed; some rules
+        # provide only srcuser (for example an invalid username).
+        user = alert.data.get("dstuser") or alert.data.get("srcuser") or alert.data.get("user")
         if isinstance(user, str) and user:
             entities.append(EntityRef(type="user", value=user))
 

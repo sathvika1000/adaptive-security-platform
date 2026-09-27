@@ -44,3 +44,20 @@ def test_invalid_source_ip_is_ignored() -> None:
         "data": {"srcuser": "alice", "srcip": "unknown"},
     }
     assert WazuhConnector().normalize(payload).source_ip is None
+
+
+def test_ssh_target_account_is_the_correlated_user() -> None:
+    payload = {
+        "id": "ssh-success-1",
+        "timestamp": "2026-09-27T02:00:00Z",
+        "rule": {"id": "5715", "level": 3, "groups": ["sshd", "authentication_success"]},
+        "agent": {"id": "001", "name": "web-01"},
+        "data": {"dstuser": "alice", "srcuser": "remote-identity", "srcip": "198.51.100.20"},
+    }
+
+    event = WazuhConnector().normalize(payload)
+
+    assert ("user", "alice") in {(entity.type, entity.value) for entity in event.entities}
+    assert ("user", "remote-identity") not in {
+        (entity.type, entity.value) for entity in event.entities
+    }
