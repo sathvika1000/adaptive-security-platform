@@ -23,3 +23,13 @@ jobs:
       - run: mypy src
       - run: pytest --cov=adaptive_security --cov-report=term-missing --cov-fail-under=80
       - run: docker build -t adaptive-security-platform:test .
+      - name: Validate Wazuh Compose integration
+        env:
+          ASP_API_KEY: ci-only-key
+        run: |
+          docker compose -f compose.yaml -f compose.wazuh.yaml config --quiet
+          git clone --quiet --depth 1 --branch v4.14.8 \
+            https://github.com/wazuh/wazuh-docker.git /tmp/asp-wazuh-docker
+          docker compose -p asp-wazuh \
+            -f /tmp/asp-wazuh-docker/single-node/docker-compose.yml \
+            -f deploy/wazuh-loopback.yaml config --quiet

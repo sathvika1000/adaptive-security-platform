@@ -60,7 +60,9 @@ docker compose down
 
 The replay prints the incident ID and confirms retrieval. Compose binds only
 to localhost. The named volume survives `docker compose down`; use a fresh
-volume to reset the demonstration. No Wazuh server is bundled.
+volume to reset the demonstration. No Wazuh server is bundled. For Docker
+Desktop and the official Wazuh single-node stack, follow
+[the Wazuh setup guide](docs/WAZUH_DOCKER_DESKTOP.md).
 
 ## Forward Wazuh alerts
 

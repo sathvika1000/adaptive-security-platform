@@ -1,0 +1,32 @@
+# Use with compose.yaml after the official Wazuh single-node stack is running
+# as project asp-wazuh. The forwarder reads only the manager's alert volume.
+services:
+  forwarder:
+    build: .
+    user: "0:0"
+    network_mode: "service:platform"
+    depends_on:
+      platform:
+        condition: service_healthy
+    environment:
+      ASP_API_KEY: ${ASP_API_KEY:?Set ASP_API_KEY before starting}
+    volumes:
+      - wazuh-manager-logs:/var/ossec/logs:ro
+      - forwarder-state:/state
+    command:
+      - python
+      - -m
+      - adaptive_security.forwarder
+      - /var/ossec/logs/alerts/alerts.json
+      - --checkpoint
+      - /state/alerts.cursor
+      - --follow
+      - --url
+      - http://127.0.0.1:8000
+    restart: unless-stopped
+
+volumes:
+  wazuh-manager-logs:
+    external: true
+    name: asp-wazuh_wazuh_logs
+  forwarder-state:
