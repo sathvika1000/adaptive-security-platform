@@ -86,6 +86,18 @@ priority of 7/10. This sequence is a triage lead, not proof of compromise;
 ordinary password retries can match it. Incident severity remains the maximum
 source severity and is separate from signal priority.
 
+## Evaluate the sequence signal
+
+Provide a JSONL file with one labeled case per line. Each line has a unique
+`case_id`, a `label` of `malicious` or `benign`, and an `events` array of
+canonical `SecurityEvent` objects (see `tests/test_evaluation.py` for
+examples). Run `python scripts/evaluate_signal.py cases.jsonl`.
+Cases are isolated in separate temporary databases and processed through the
+normal ingestion and incident path. The output counts case-level true/false
+positives and negatives and computes precision and recall when defined.
+It prints only aggregate counts; use deidentified, permissioned examples.
+Synthetic cases test the evaluation contract, not real-world detection quality.
+
 The POC indexes authentication events by user/host and event time. Each new
 event updates only its connected correlation run while preserving the ID of a
 matching incident as the run grows or late events arrive. Existing SQLite
