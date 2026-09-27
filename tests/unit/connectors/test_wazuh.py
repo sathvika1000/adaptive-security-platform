@@ -1,4 +1,4 @@
-from datetime import UTC
+from datetime import timedelta
 
 from adaptive_security.connectors.wazuh import WazuhConnector
 from adaptive_security.domain.events import EventCategory
@@ -22,7 +22,7 @@ def test_normalizes_failed_authentication_alert() -> None:
     assert event.event_id == "alert-1"
     assert event.source == "wazuh"
     assert event.category is EventCategory.AUTHENTICATION
-    assert event.event_time.tzinfo is UTC
+    assert event.event_time.utcoffset() == timedelta(0)
     assert event.outcome == "failure"
     assert event.severity == 5
     assert {(entity.type, entity.value) for entity in event.entities} == {
