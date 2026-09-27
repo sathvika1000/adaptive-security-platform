@@ -9,18 +9,20 @@
 - JSON-line Wazuh alert-file forwarder with retry-safe checkpointing.
 - Stable incident ID reconciliation for late and appended alerts, plus close
   and reopen lifecycle behavior.
+- Indexed event identity/time lookup and affected-run incident updates, with
+  migration of existing SQLite databases.
 
 ## Current limits
 - Correlation is a precise user/host authentication rule, not behavioral or
-  cross-category detection. Rebuilding all incidents per write is bounded
-  only by available memory and work per request.
+  cross-category detection. Per-identity history scans and unbounded retention
+  still limit throughput.
 - Incident IDs survive membership growth, but merging two incident runs retires
-  one ID. Full recomputation remains expensive; indexed event association and
-  audited per-analyst lifecycle actions are still pending.
+  one ID. Aliases for retired IDs and audited per-analyst lifecycle actions
+  are still pending.
 - Live Wazuh manager forwarding and ARM64 development topology are not yet validated.
 
 ## Next
-1. Incremental, indexed event association and auditable analyst actions.
+1. Bounded history/retention, incident merge aliases, and auditable analyst actions.
 2. Validate forwarding against a real Wazuh manager and document host access.
 3. Validate the Compose topology on Docker Desktop and add operational signals.
 4. Measure a specific adaptive capability against benign lookalikes before promotion.

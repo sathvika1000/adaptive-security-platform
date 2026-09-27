@@ -1,10 +1,18 @@
+import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC
 from pathlib import Path
 
+from adaptive_security.correlation.policy import identity
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentStatus
+
+
+def correlation_key(event: SecurityEvent) -> str | None:
+    key = identity(event)
+    return json.dumps(key, separators=(",", ":")) if key else None
 
 
 class SQLiteStore:
@@ -13,17 +21,51 @@ class SQLiteStore:
         if path != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         with self.transaction() as conn:
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS events (
-                    source TEXT NOT NULL, event_id TEXT NOT NULL, body TEXT NOT NULL,
-                    PRIMARY KEY (source, event_id)
-                );
-                CREATE TABLE IF NOT EXISTS incidents (
-                    incident_id TEXT PRIMARY KEY, body TEXT NOT NULL
-                );
-                """
+            self._prepare(conn)
+
+    def _prepare(self, conn: sqlite3.Connection) -> None:
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS events (
+                source TEXT NOT NULL, event_id TEXT NOT NULL, body TEXT NOT NULL,
+                event_time TEXT, correlation_key TEXT, incident_id TEXT,
+                PRIMARY KEY (source, event_id)
+            )"""
+        )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS incidents (
+                incident_id TEXT PRIMARY KEY, body TEXT NOT NULL
+            )"""
+        )
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
+        for name in ("event_time", "correlation_key", "incident_id"):
+            if name not in columns:
+                conn.execute(f"ALTER TABLE events ADD COLUMN {name} TEXT")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS events_by_identity "
+            "ON events(correlation_key, event_time, source, event_id)"
+        )
+        for source, event_id, body in conn.execute(
+            "SELECT source, event_id, body FROM events WHERE event_time IS NULL"
+        ):
+            event = SecurityEvent.model_validate_json(body)
+            conn.execute(
+                """UPDATE events SET event_time = ?, correlation_key = ?
+                   WHERE source = ? AND event_id = ?""",
+                (event.event_time.astimezone(UTC).isoformat(), correlation_key(event),
+                 source, event_id),
             )
+        if "incident_id" not in columns:
+            for incident in self.stored_incidents(conn):
+                for event_id in incident.event_ids:
+                    matches = conn.execute(
+                        "SELECT source FROM events WHERE event_id = ?", (event_id,)
+                    ).fetchall()
+                    if len(matches) != 1:
+                        raise ValueError(f"cannot migrate ambiguous incident event {event_id!r}")
+                    conn.execute(
+                        "UPDATE events SET incident_id = ? WHERE source = ? AND event_id = ?",
+                        (incident.incident_id, matches[0][0], event_id),
+                    )
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
@@ -40,52 +82,74 @@ class SQLiteStore:
 
     def put_event(
         self, conn: sqlite3.Connection, event: SecurityEvent
-    ) -> tuple[SecurityEvent, bool]:
+    ) -> tuple[SecurityEvent, bool, str | None]:
         row = conn.execute(
-            "SELECT body FROM events WHERE source = ? AND event_id = ?",
+            "SELECT body, incident_id FROM events WHERE source = ? AND event_id = ?",
             (event.source, event.event_id),
         ).fetchone()
         if row:
-            return SecurityEvent.model_validate_json(row[0]), False
+            return SecurityEvent.model_validate_json(row[0]), False, row[1]
         conn.execute(
-            "INSERT INTO events (source, event_id, body) VALUES (?, ?, ?)",
-            (event.source, event.event_id, event.model_dump_json()),
+            """INSERT INTO events
+               (source, event_id, body, event_time, correlation_key)
+               VALUES (?, ?, ?, ?, ?)""",
+            (event.source, event.event_id, event.model_dump_json(),
+             event.event_time.astimezone(UTC).isoformat(), correlation_key(event)),
         )
-        return event, True
+        return event, True, None
 
-    def events(self, conn: sqlite3.Connection) -> list[SecurityEvent]:
-        rows = conn.execute("SELECT body FROM events")
-        return [SecurityEvent.model_validate_json(row[0]) for row in rows]
+    def events_for_identity(
+        self, conn: sqlite3.Connection, key: tuple[str, str]
+    ) -> list[tuple[SecurityEvent, str | None]]:
+        encoded = json.dumps(key, separators=(",", ":"))
+        rows = conn.execute(
+            """SELECT body, incident_id FROM events
+               WHERE correlation_key = ?
+               ORDER BY event_time, source, event_id""",
+            (encoded,),
+        )
+        return [(SecurityEvent.model_validate_json(body), incident_id)
+                for body, incident_id in rows]
 
-    def replace_incidents(self, conn: sqlite3.Connection, incidents: list[Incident]) -> None:
-        conn.execute("DELETE FROM incidents")
+    def save_incident(
+        self, conn: sqlite3.Connection, incident: Incident,
+        events: list[SecurityEvent], retired_ids: set[str]
+    ) -> None:
+        conn.execute(
+            """INSERT INTO incidents (incident_id, body) VALUES (?, ?)
+               ON CONFLICT(incident_id) DO UPDATE SET body = excluded.body""",
+            (incident.incident_id, incident.model_dump_json()),
+        )
         conn.executemany(
-            "INSERT INTO incidents (incident_id, body) VALUES (?, ?)",
-            [(incident.incident_id, incident.model_dump_json()) for incident in incidents],
+            "UPDATE events SET incident_id = ? WHERE source = ? AND event_id = ?",
+            [(incident.incident_id, event.source, event.event_id) for event in events],
         )
+        conn.executemany(
+            "DELETE FROM incidents WHERE incident_id = ?",
+            [(incident_id,) for incident_id in retired_ids],
+        )
+
+    def stored_incident(self, conn: sqlite3.Connection, incident_id: str) -> Incident | None:
+        row = conn.execute(
+            "SELECT body FROM incidents WHERE incident_id = ?", (incident_id,)
+        ).fetchone()
+        return Incident.model_validate_json(row[0]) if row else None
 
     def incident(self, incident_id: str) -> Incident | None:
         with self.transaction() as conn:
-            row = conn.execute(
-                "SELECT body FROM incidents WHERE incident_id = ?", (incident_id,)
-            ).fetchone()
-        return Incident.model_validate_json(row[0]) if row else None
+            return self.stored_incident(conn, incident_id)
 
     def close_incident(self, incident_id: str) -> Incident | None:
         with self.transaction() as conn:
-            row = conn.execute(
-                "SELECT body FROM incidents WHERE incident_id = ?", (incident_id,)
-            ).fetchone()
-            if row is None:
+            incident = self.stored_incident(conn, incident_id)
+            if incident is None:
                 return None
-            incident = Incident.model_validate_json(row[0]).model_copy(
-                update={"status": IncidentStatus.CLOSED}
-            )
+            closed = incident.model_copy(update={"status": IncidentStatus.CLOSED})
             conn.execute(
                 "UPDATE incidents SET body = ? WHERE incident_id = ?",
-                (incident.model_dump_json(), incident_id),
+                (closed.model_dump_json(), incident_id),
             )
-            return incident
+            return closed
 
     def stored_incidents(self, conn: sqlite3.Connection) -> list[Incident]:
         rows = conn.execute("SELECT body FROM incidents ORDER BY incident_id").fetchall()
@@ -94,3 +158,4 @@ class SQLiteStore:
     def incidents(self) -> list[Incident]:
         with self.transaction() as conn:
             return self.stored_incidents(conn)
+
