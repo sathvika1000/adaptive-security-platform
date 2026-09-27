@@ -22,6 +22,10 @@ GET `/v1/incidents` or `/v1/incidents/{incident_id}` with the same header.
 failure with an event time later than the incident's previous last-seen time
 reopens it; older evidence leaves it closed. Repeated closes are idempotent.
 `/health` is unauthenticated. OpenAPI is available at `/docs`.
+Responses carry an `X-Request-ID`; structured request logs contain that ID,
+route, status, and duration without alert bodies or API keys. The Wazuh
+ingestion endpoint rejects bodies larger than 1 MiB with HTTP 413, including
+requests that understate their `Content-Length`.
 
 For a reproducible demonstration, send two authentication alerts with distinct
 IDs, the same `data.srcuser` and `agent.name`, and timestamps within 15 minutes.

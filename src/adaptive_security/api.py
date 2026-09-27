@@ -1,12 +1,19 @@
 import hmac
+import json
+import logging
 import os
+from collections.abc import Awaitable, Callable
+from time import perf_counter
+from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel
+from starlette.responses import Response
 
 from adaptive_security.connectors.wazuh import WazuhAlert, WazuhConnector
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident
+from adaptive_security.http import AlertBodyLimit
 from adaptive_security.service import IngestionService
 from adaptive_security.store import SQLiteStore
 
@@ -16,11 +23,40 @@ class IngestionResult(BaseModel):
     incident: Incident | None
 
 
+logger = logging.getLogger("adaptive_security.api")
+
+
 def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAPI:
     app = FastAPI(title="Adaptive Security Platform", version="0.1.0")
+    app.add_middleware(AlertBodyLimit)
     store = SQLiteStore(db_path or os.environ.get("ASP_DB_PATH", "./security.db"))
     service = IngestionService(store)
     key = api_key if api_key is not None else os.environ.get("ASP_API_KEY")
+
+    @app.middleware("http")
+    async def trace_request(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        request_id = uuid4().hex
+        started = perf_counter()
+        status_code = 500
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            logger.info(
+                json.dumps(
+                    {
+                        "request_id": request_id,
+                        "method": request.method,
+                        "path": getattr(request.scope.get("route"), "path", "<unmatched>"),
+                        "status": status_code,
+                        "duration_ms": round((perf_counter() - started) * 1000, 2),
+                    }
+                )
+            )
 
     def authorize(x_api_key: str | None = Header(default=None)) -> None:
         if not key:

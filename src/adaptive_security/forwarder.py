@@ -24,7 +24,7 @@ class NoRedirect(HTTPRedirectHandler):
 def send_alert(endpoint: str, key: str, alert: dict[str, Any]) -> None:
     request = Request(
         endpoint,
-        data=json.dumps(alert).encode(),
+        data=json.dumps(alert, separators=(",", ":")).encode(),
         headers={"Content-Type": "application/json", "X-API-Key": key},
         method="POST",
     )
