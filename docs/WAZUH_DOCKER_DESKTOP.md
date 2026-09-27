@@ -123,25 +123,52 @@ If Wazuh has not produced `alerts.json` yet, the forwarder retries on its
 restart policy. A malformed alert or failed API delivery stops on that line;
 check its logs rather than deleting the cursor.
 
-For a live end-to-end check, first generate two permitted authentication
-events on an endpoint that Wazuh monitors, with the same target account and
-host within 15 minutes. Confirm two different IDs appear in the manager's
-`/var/ossec/logs/alerts/alerts.json`, then check the platform with the same
-key:
+## 5. Verify Wazuh decoding and incident correlation
+
+A manager-local SCA alert can verify the forwarding path. Retrieve an alert
+ID from `alerts.json`, then use
+`curl -fsS -H "X-API-Key: $ASP_API_KEY"
+http://127.0.0.1:8000/v1/events/wazuh/<ALERT_ID>` to confirm that the
+platform stored it. A new Terminal session must restore the same API key;
+you can capture it without displaying it using
+`export ASP_API_KEY="$(docker exec adaptive-security-platform-platform-1 printenv ASP_API_KEY)"`.
+
+For a repeatable authentication test, the pinned Wazuh manager configuration
+already monitors `/var/ossec/logs/active-responses.log` as syslog. Append two
+clearly synthetic SSH lines there. This exercises the Wazuh log collector,
+SSH decoder and rule 5710, JSON alert writer, forwarder, and correlation API.
+It does not represent actual SSH login attempts. From the platform repository:
 
 ```sh
-docker compose -p asp-wazuh -f ../wazuh-docker/single-node/docker-compose.yml \
-  -f deploy/wazuh-loopback.yaml exec wazuh.manager \
-  sh -c 'tail -n 2 /var/ossec/logs/alerts/alerts.json'
+docker compose -p asp-wazuh \
+  -f ../wazuh-docker/single-node/docker-compose.yml \
+  -f deploy/wazuh-loopback.yaml exec -T -u 0 wazuh.manager sh -ec '
+log=/var/ossec/logs/active-responses.log
+test -f "$log"
+stamp=$(date "+%b %e %H:%M:%S")
+printf "%s wazuh.manager sshd[4242]: Invalid user asp-demo from 198.51.100.42 port 55201\n" "$stamp" >> "$log"
+printf "%s wazuh.manager sshd[4243]: Invalid user asp-demo from 198.51.100.42 port 55202\n" "$stamp" >> "$log"
+'
+```
+
+After several seconds, verify two distinct alert IDs with `srcuser`
+`asp-demo`, then retrieve the incident:
+
+```sh
+docker compose -p asp-wazuh \
+  -f ../wazuh-docker/single-node/docker-compose.yml \
+  -f deploy/wazuh-loopback.yaml exec -T wazuh.manager \
+  sh -c "grep 'asp-demo' /var/ossec/logs/alerts/alerts.json | tail -n 2"
 curl -fsS -H "X-API-Key: $ASP_API_KEY" http://127.0.0.1:8000/v1/incidents
 ```
 
-Run the `docker compose ... exec` command from the platform repository (the
-first file's relative paths resolve against the Wazuh directory). The two
-alerts must have a recognized authentication group, a user (`dstuser` or
-`srcuser`), and an agent name for this POC's correlation contract. Manager
-startup alone does not create that pair. An empty incident list means to
-inspect the actual alert fields and forwarder logs before changing rules.
+The expected incident has user `asp-demo`, host `wazuh.manager`, and two
+event IDs. Running the test again more than 15 minutes later forms another
+incident because the correlation window has elapsed. The test was validated
+on Apple Silicon Docker Desktop with Wazuh 4.14.8. For real endpoint
+coverage, enroll a Wazuh agent and confirm its authentication alerts have
+a user (`dstuser` or `srcuser`) and agent name; manager-local test events do
+not monitor the Mac itself.
 
 ## Stop and restart
 
