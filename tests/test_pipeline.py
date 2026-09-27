@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -66,7 +67,20 @@ def test_correlation_boundaries_and_invalid_payload(tmp_path: Path) -> None:
 def test_missing_api_key_fails_closed(tmp_path: Path) -> None:
     client = TestClient(create_app(str(tmp_path / "events.db"), api_key=""))
     assert client.get("/health").json() == {"status": "ok"}
+    assert client.get("/ready").status_code == 503
     assert client.get("/v1/incidents").status_code == 503
+
+
+def test_readiness_checks_database_without_exposing_details(tmp_path: Path) -> None:
+    path = str(tmp_path / "events.db")
+    client = TestClient(create_app(path, "secret"))
+    assert client.get("/ready").json() == {"status": "ready"}
+    with sqlite3.connect(path) as conn:
+        conn.execute("DROP TABLE incidents")
+    response = client.get("/ready")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Service unavailable"}
+    assert client.get("/health").json() == {"status": "ok"}
 
 
 def test_success_only_activity_does_not_create_incident(tmp_path: Path) -> None:

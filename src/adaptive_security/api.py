@@ -70,6 +70,12 @@ def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAP
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/ready")
+    def ready() -> dict[str, str]:
+        if not key or not store.ready():
+            raise HTTPException(status_code=503, detail="Service unavailable")
+        return {"status": "ready"}
+
     @app.post("/v1/events/wazuh", response_model=IngestionResult, dependencies=[Depends(authorize)])
     def ingest_wazuh_event(payload: WazuhAlert) -> IngestionResult:
         event = WazuhConnector().normalize(payload.model_dump())
