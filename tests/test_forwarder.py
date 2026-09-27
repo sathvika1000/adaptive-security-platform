@@ -1,4 +1,5 @@
 import json
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from threading import Thread
@@ -51,6 +52,35 @@ def test_forwarder_retries_failed_delivery_and_handles_truncation(tmp_path: Path
     write_alerts(alerts, ["new"])
     assert forward_once(alerts, checkpoint, lambda alert: seen.append(alert["id"])) == 1
     assert seen[-1] == "new"
+
+
+def test_checkpoint_detects_truncation_and_regrowth_past_saved_offset(tmp_path: Path) -> None:
+    alerts = tmp_path / "alerts.json"
+    checkpoint = tmp_path / "cursor.json"
+    write_alerts(alerts, ["one", "two"])
+    seen: list[str] = []
+    assert forward_once(alerts, checkpoint, lambda item: seen.append(item["id"])) == 2
+    old_inode = os.stat(alerts).st_ino
+    old_offset = json.loads(checkpoint.read_text())["offset"]
+
+    write_alerts(alerts, ["new-one", "new-two"])
+    assert os.stat(alerts).st_ino == old_inode
+    assert os.stat(alerts).st_size >= old_offset
+    assert forward_once(alerts, checkpoint, lambda item: seen.append(item["id"])) == 2
+    assert seen == ["one", "two", "new-one", "new-two"]
+
+
+def test_legacy_checkpoint_replays_for_safe_upgrade(tmp_path: Path) -> None:
+    alerts = tmp_path / "alerts.json"
+    checkpoint = tmp_path / "cursor.json"
+    write_alerts(alerts, ["one"])
+    checkpoint.write_text(json.dumps({
+        "inode": os.stat(alerts).st_ino, "offset": os.stat(alerts).st_size,
+    }))
+    seen: list[str] = []
+    assert forward_once(alerts, checkpoint, lambda item: seen.append(item["id"])) == 1
+    assert seen == ["one"]
+    assert json.loads(checkpoint.read_text())["version"] == 2
 
 
 def test_transport_does_not_follow_redirect_with_api_key() -> None:
