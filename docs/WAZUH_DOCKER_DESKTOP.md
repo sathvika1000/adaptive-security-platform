@@ -73,6 +73,35 @@ dashboard. The official stack's initial dashboard credentials are `admin` /
 certificate causes a browser warning. Indexer startup can take a minute or
 more.
 
+## Certificate permission repair on macOS
+
+If the generator reports `cp: cannot create regular file
+'/certificates/root-ca-manager.pem': Permission denied` and manager startup
+cannot mount that path, the two manager CA copies were not written. Wazuh's
+generator changes the certificate directory to read-only before that copy.
+From `~/wazuh-docker/single-node`, repair only those missing copies:
+
+```sh
+(
+  set -e
+  certs=config/wazuh_indexer_ssl_certs
+  test -f "$certs/root-ca.pem"
+  test -f "$certs/root-ca.key"
+  chmod u+w "$certs"
+  cp "$certs/root-ca.pem" "$certs/root-ca-manager.pem"
+  cp "$certs/root-ca.key" "$certs/root-ca-manager.key"
+  chmod 400 "$certs/root-ca-manager.pem" "$certs/root-ca-manager.key"
+  chmod u-w "$certs"
+)
+```
+
+Then repeat the `docker compose ... up -d` and `ps` commands above. Do not
+rerun the generator against a partially started stack, as that would replace
+its CA and certificates. If any repair command fails, inspect
+`ls -ld config/wazuh_indexer_ssl_certs` and
+`ls -l config/wazuh_indexer_ssl_certs/root-ca*` before changing permissions
+further. Never paste the contents of a private `.key` file.
+
 ## 4. Connect the alert file
 
 Back in the platform repository, in the same Terminal session with
