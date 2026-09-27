@@ -28,8 +28,8 @@ See `tests/test_pipeline.py` for exact payloads.
 ## Correlation contract and limits
 
 Only canonical authentication events with both user and host are eligible.
-A run of at least two events for the same user and host, with no gap greater
-than 15 minutes between adjacent event times, forms one incident. Severity is
+A run of at least two events for the same user and host, including a failure,
+with no gap greater than 15 minutes between adjacent event times, forms one incident. Severity is
 the maximum event severity. Events are ordered by time, source and ID.
 Duplicate source/ID ingestion returns the originally stored event.
 
@@ -39,4 +39,3 @@ local datasets, not high-volume ingestion or analyst state. Incident status
 updates, paginated retrieval, retention, payload size limits, and live Wazuh
 transport are subsequent work. Deploy behind TLS and network controls; the
 shared API key is a POC boundary, not a multi-user authorization system.
-

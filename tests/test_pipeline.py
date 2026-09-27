@@ -63,3 +63,15 @@ def test_missing_api_key_fails_closed(tmp_path: Path) -> None:
     client = TestClient(create_app(str(tmp_path / "events.db"), api_key=""))
     assert client.get("/health").json() == {"status": "ok"}
     assert client.get("/v1/incidents").status_code == 503
+
+
+def test_success_only_activity_does_not_create_incident(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "events.db"), "secret"))
+    headers = {"x-api-key": "secret"}
+    for event_id, minute in (("one", 0), ("two", 1)):
+        payload = alert(event_id, minute)
+        payload["rule"]["groups"] = ["authentication_success"]
+        response = client.post("/v1/events/wazuh", json=payload, headers=headers)
+        assert response.status_code == 200
+        assert response.json()["incident"] is None
+    assert client.get("/v1/incidents", headers=headers).json() == []

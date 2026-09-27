@@ -30,11 +30,11 @@ def correlate(events: list[SecurityEvent]) -> list[Incident]:
         segment: list[SecurityEvent] = []
         for event in ordered:
             if segment and event.event_time - segment[-1].event_time > WINDOW:
-                if len(segment) >= 2:
+                if len(segment) >= 2 and any(e.outcome == "failure" for e in segment):
                     incidents.append(engine.correlate(segment))
                 segment = []
             segment.append(event)
-        if len(segment) >= 2:
+        if len(segment) >= 2 and any(e.outcome == "failure" for e in segment):
             incidents.append(engine.correlate(segment))
     return incidents
 
@@ -52,4 +52,3 @@ class IngestionService:
                 (item for item in incidents if persisted.event_id in item.event_ids), None
             )
             return persisted, incident
-
