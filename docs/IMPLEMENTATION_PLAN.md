@@ -25,6 +25,9 @@
 - Bounded, offset-based API pagination for incident listings and transition history.
 - Separate liveness and readiness endpoints; container health checks key and database readiness.
 - Forwarder checkpoints verify the last delivered line to detect fast truncate/regrow cycles.
+- Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
+  Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
+  reached the API; two SSH failures produced a durable incident.
 
 ## Current limits
 - Correlation remains a user/host authentication rule, not cross-category
@@ -35,13 +38,14 @@
   on representative real benign and malicious samples has not yet been measured.
 - Merges preserve old links through aliases for newly retired IDs. The shared
   API key cannot attribute lifecycle actions to individual analysts.
-- Live Wazuh manager forwarding and ARM64 development topology are not yet validated.
+- The Mac endpoint agent has not yet been enrolled, so manager-local test alerts
+  validate the pipeline but not host telemetry or real authentication activity.
 
 ## Next
-1. Event retention, long-run handling, and identity-aware analyst actions.
-2. Validate forwarding against a real Wazuh manager and document host access.
-3. Validate the Compose topology and readiness on Docker Desktop.
-4. Run both signal evaluations on permissioned benign lookalikes and malicious
+1. Enroll the pinned Apple Silicon Wazuh agent on the Mac and verify its active
+   status and a genuine endpoint alert through the API.
+2. Event retention, long-run handling, and identity-aware analyst actions.
+3. Run both signal evaluations on permissioned benign lookalikes and malicious
    samples before considering shadow signal promotion.
 
 Keep deterministic detection and evidence traceability through each slice.
