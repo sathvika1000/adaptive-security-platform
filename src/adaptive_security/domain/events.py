@@ -1,8 +1,7 @@
-from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 
 class EventCategory(StrEnum):
@@ -29,8 +28,8 @@ class SecurityEvent(BaseModel):
     event_id: str = Field(min_length=1)
     source: str = Field(min_length=1)
     category: EventCategory
-    event_time: datetime
-    observed_time: datetime
+    event_time: AwareDatetime
+    observed_time: AwareDatetime
     action: str | None = None
     outcome: str | None = None
     severity: int = Field(default=0, ge=0, le=10)
