@@ -12,7 +12,7 @@ from starlette.responses import Response
 
 from adaptive_security.connectors.wazuh import WazuhAlert, WazuhConnector
 from adaptive_security.domain.events import SecurityEvent
-from adaptive_security.domain.incidents import Incident
+from adaptive_security.domain.incidents import Incident, IncidentTransition
 from adaptive_security.http import AlertBodyLimit
 from adaptive_security.service import IngestionService
 from adaptive_security.store import SQLiteStore
@@ -38,6 +38,7 @@ def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAP
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         request_id = uuid4().hex
+        request.state.request_id = request_id
         started = perf_counter()
         status_code = 500
         try:
@@ -98,13 +99,24 @@ def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAP
             raise HTTPException(status_code=404, detail="Incident not found")
         return incident
 
+    @app.get(
+        "/v1/incidents/{incident_id}/history",
+        response_model=list[IncidentTransition],
+        dependencies=[Depends(authorize)],
+    )
+    def get_incident_history(incident_id: str) -> list[IncidentTransition]:
+        history = store.incident_history(incident_id)
+        if history is None:
+            raise HTTPException(status_code=404, detail="Incident not found")
+        return history
+
     @app.post(
         "/v1/incidents/{incident_id}/close",
         response_model=Incident,
         dependencies=[Depends(authorize)],
     )
-    def close_incident(incident_id: str) -> Incident:
-        incident = store.close_incident(incident_id)
+    def close_incident(incident_id: str, request: Request) -> Incident:
+        incident = store.close_incident(incident_id, request_id=request.state.request_id)
         if incident is None:
             raise HTTPException(status_code=404, detail="Incident not found")
         return incident

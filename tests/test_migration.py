@@ -49,6 +49,8 @@ def test_existing_database_migrates_without_losing_incident_state(tmp_path: Path
     headers = {"x-api-key": "secret"}
     stored = client.get(f"/v1/incidents/{incident.incident_id}", headers=headers)
     assert stored.json()["status"] == "closed"
+    assert client.get(f"/v1/incidents/{incident.incident_id}/history",
+                      headers=headers).json() == []
     updated = client.post("/v1/events/wazuh", json=alert("three", 15), headers=headers)
     assert updated.json()["incident"]["incident_id"] == incident.incident_id
     assert updated.json()["incident"]["status"] == "open"
