@@ -6,7 +6,10 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from adaptive_security.api import create_app
+from adaptive_security.connectors.wazuh import WazuhConnector
 from adaptive_security.domain.events import SecurityEvent
+from adaptive_security.service import IngestionService
+from adaptive_security.store import SQLiteStore
 
 
 def alert(event_id: str, minute: int, user: str = "alice", host: str = "web-01") -> dict:
@@ -130,6 +133,59 @@ def test_bridge_merges_incidents_under_oldest_id(tmp_path: Path) -> None:
     assert len(client.get("/v1/incidents", headers=headers).json()) == 1
     alias = client.get(f"/v1/incidents/{ids[1]}", headers=headers)
     assert alias.json() == merged.json()["incident"]
+
+
+def test_incident_events_are_ordered_paginated_and_authenticated(tmp_path: Path) -> None:
+    path = str(tmp_path / "events.db")
+    client = TestClient(create_app(path, "secret"))
+    headers = {"x-api-key": "secret"}
+    for event_id, minute in (("second", 5), ("first", 0), ("third", 10)):
+        incident = client.post(
+            "/v1/events/wazuh", json=alert(event_id, minute), headers=headers
+        ).json()["incident"]
+    url = f"/v1/incidents/{incident['incident_id']}/events"
+
+    assert client.get(url).status_code == 401
+    assert client.get("/v1/incidents/missing/events", headers=headers).status_code == 404
+    assert client.get(url, params={"limit": 0}, headers=headers).status_code == 422
+    assert client.get(url, params={"offset": -1}, headers=headers).status_code == 422
+    assert [event["event_id"] for event in client.get(url, headers=headers).json()] == [
+        "first", "second", "third"
+    ]
+    restarted = TestClient(create_app(path, "secret"))
+    page = restarted.get(url, params={"limit": 1, "offset": 1}, headers=headers)
+    assert [(event["source"], event["event_id"]) for event in page.json()] == [
+        ("wazuh", "second")
+    ]
+    assert restarted.get(url, params={"offset": 3}, headers=headers).json() == []
+
+
+def test_incident_evidence_follows_merge_alias_and_keeps_source(tmp_path: Path) -> None:
+    path = str(tmp_path / "events.db")
+    client = TestClient(create_app(path, "secret"))
+    headers = {"x-api-key": "secret"}
+    incident_ids = []
+    for event_id, minute in (("a", 0), ("b", 5), ("c", 40), ("d", 45)):
+        incident = client.post(
+            "/v1/events/wazuh", json=alert(event_id, minute), headers=headers
+        ).json()["incident"]
+        if incident and incident["incident_id"] not in incident_ids:
+            incident_ids.append(incident["incident_id"])
+    for event_id, minute in (("bridge-1", 20), ("bridge-2", 30)):
+        client.post("/v1/events/wazuh", json=alert(event_id, minute), headers=headers)
+
+    other = WazuhConnector().normalize(alert("a", 25)).model_copy(
+        update={"source": "other"}
+    )
+    IngestionService(SQLiteStore(path)).ingest(other)
+    restarted = TestClient(create_app(path, "secret"))
+    expected = [
+        ("wazuh", "a"), ("wazuh", "b"), ("wazuh", "bridge-1"),
+        ("other", "a"), ("wazuh", "bridge-2"), ("wazuh", "c"), ("wazuh", "d"),
+    ]
+    for incident_id in incident_ids:
+        response = restarted.get(f"/v1/incidents/{incident_id}/events", headers=headers)
+        assert [(event["source"], event["event_id"]) for event in response.json()] == expected
 
 
 def test_merged_aliases_survive_transitive_merge_restart_and_close(tmp_path: Path) -> None:

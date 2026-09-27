@@ -25,6 +25,8 @@
 - Bounded, offset-based API pagination for incident listings and transition history.
 - Separate liveness and readiness endpoints; container health checks key and database readiness.
 - Forwarder checkpoints verify the last delivered line to detect fast truncate/regrow cycles.
+- Paginated incident evidence retrieval returns time-ordered canonical events,
+  including through retired incident aliases and across event sources.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
@@ -38,13 +40,13 @@
   on representative real benign and malicious samples has not yet been measured.
 - Merges preserve old links through aliases for newly retired IDs. The shared
   API key cannot attribute lifecycle actions to individual analysts.
-- The Mac endpoint agent has not yet been enrolled, so manager-local test alerts
-  validate the pipeline but not host telemetry or real authentication activity.
+- The Apple Silicon Mac agent is enrolled and Active; a real rootcheck alert from
+  agent 001 reached the API. Authentication correlation was tested with
+  manager-decoded synthetic SSH logs, not a real login sequence.
 
 ## Next
-1. Enroll the pinned Apple Silicon Wazuh agent on the Mac and verify its active
-   status and a genuine endpoint alert through the API.
-2. Event retention, long-run handling, and identity-aware analyst actions.
+1. Event retention and bounded handling of long correlation runs.
+2. Identity-aware analyst actions and an SOC-facing incident view.
 3. Run both signal evaluations on permissioned benign lookalikes and malicious
    samples before considering shadow signal promotion.
 
