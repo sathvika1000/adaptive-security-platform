@@ -19,12 +19,13 @@
 - Persisted user/host source IP baseline and first-seen success shadow signal,
   with isolated case-level evaluation and cold-start behavior.
 - Persistent aliases for incident IDs retired by late-alert merges.
+- Indexed neighbor lookup limited to the connected correlation run.
 
 ## Current limits
 - Correlation remains a user/host authentication rule, not cross-category
   detection. The stateful novelty observation is shadow-only and has no
-  measured real-world precision. Per-identity history scans, unbounded event
-  retention, and unbounded per-identity known-IP sets limit throughput.
+  measured real-world precision. Long connected runs, unbounded event retention,
+  and unbounded per-identity known-IP sets limit throughput.
 - The sequence signal is deterministic. Its priority is a heuristic; precision
   on representative real benign and malicious samples has not yet been measured.
 - Merges preserve old links through aliases for newly retired IDs. Audited
