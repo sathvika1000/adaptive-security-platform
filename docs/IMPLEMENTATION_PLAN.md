@@ -24,6 +24,7 @@
   and lookup through retired incident aliases.
 - Bounded, offset-based API pagination for incident listings and transition history.
 - Separate liveness and readiness endpoints; container health checks key and database readiness.
+- Forwarder checkpoints verify the last delivered line to detect fast truncate/regrow cycles.
 
 ## Current limits
 - Correlation remains a user/host authentication rule, not cross-category

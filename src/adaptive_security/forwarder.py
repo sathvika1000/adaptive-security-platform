@@ -5,6 +5,7 @@ import json
 import os
 import time
 from collections.abc import Callable
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -40,8 +41,19 @@ def forward_once(
         offset = 0
         if checkpoint.exists():
             saved = json.loads(checkpoint.read_text())
-            if saved["inode"] == stat.st_ino and saved["offset"] <= stat.st_size:
-                offset = saved["offset"]
+            length = saved.get("last_length", 0)
+            if (
+                saved.get("version") == 2
+                and saved.get("device") == stat.st_dev
+                and saved.get("inode") == stat.st_ino
+                and isinstance(saved.get("offset"), int)
+                and isinstance(length, int)
+                and 0 < length <= MAX_LINE
+                and length <= saved["offset"] <= stat.st_size
+            ):
+                stream.seek(saved["offset"] - length)
+                if sha256(stream.read(length)).hexdigest() == saved.get("last_sha256"):
+                    offset = saved["offset"]
         stream.seek(offset)
         count = 0
         while line := stream.readline(MAX_LINE + 1):
@@ -58,7 +70,11 @@ def forward_once(
             temporary = checkpoint.with_name(checkpoint.name + ".tmp")
             fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, "w") as output:
-                json.dump({"inode": stat.st_ino, "offset": offset}, output)
+                json.dump({
+                    "version": 2, "device": stat.st_dev, "inode": stat.st_ino,
+                    "offset": offset, "last_length": len(line),
+                    "last_sha256": sha256(line).hexdigest(),
+                }, output)
                 output.flush()
                 os.fsync(output.fileno())
             os.replace(temporary, checkpoint)

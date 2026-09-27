@@ -82,6 +82,11 @@ idempotent by source/event ID. Use HTTPS for a remote platform and keep the
 key outside source control. Run without `--follow` for a one-time replay.
 Rotation or truncation resets the cursor; alerts removed before reading
 cannot be recovered by this adapter. Live manager validation remains.
+The checkpoint records a digest of the last delivered line, so truncation
+followed by rapid regrowth past the old offset normally resets safely. Older
+checkpoints are replayed once on upgrade; duplicate IDs are ignored by the API.
+If a rewritten file has the same inode, size, and final checkpoint line at the
+same offset, the adapter cannot distinguish it from an append-only file.
 
 Wazuh references: [alert management](https://documentation.wazuh.com/current/user-manual/manager/alert-management.html)
 and [server-side forwarding](https://documentation.wazuh.com/current/integrations-guide/index.html).
