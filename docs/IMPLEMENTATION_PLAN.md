@@ -29,6 +29,8 @@
   inherits the API health check as a misleading sidecar health signal.
 - Paginated incident evidence retrieval returns time-ordered canonical events,
   including through retired incident aliases and across event sources.
+- Read-only local incident workspace with paginated queue and event timeline,
+  signals, lifecycle history, and an in-memory API key.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
@@ -48,7 +50,7 @@
 
 ## Next
 1. Event retention and bounded handling of long correlation runs.
-2. Identity-aware analyst actions and an SOC-facing incident view.
+2. Identity-aware analyst actions before adding UI response controls.
 3. Run both signal evaluations on permissioned benign lookalikes and malicious
    samples before considering shadow signal promotion.
 
