@@ -12,6 +12,7 @@
 - Indexed event identity/time lookup and affected-run incident updates, with
   migration of existing SQLite databases.
 - Versioned, evidence-backed authentication sequence signal for analyst triage.
+- Bounded Wazuh request bodies and structured request metadata with correlation IDs.
 
 ## Current limits
 - Correlation is a precise user/host authentication rule, not behavioral or
