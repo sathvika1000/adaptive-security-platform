@@ -140,6 +140,10 @@ def test_merged_aliases_survive_transitive_merge_restart_and_close(tmp_path: Pat
     for alias_id in ids[1:]:
         response = restarted.get(f"/v1/incidents/{alias_id}", headers=headers)
         assert response.json() == merged
+    history = restarted.get(f"/v1/incidents/{ids[2]}/history", headers=headers).json()
+    assert [(item["action"], item["merged_into"]) for item in history] == [
+        ("merged", ids[1]), ("merged", ids[0])
+    ]
     closed = restarted.post(f"/v1/incidents/{ids[2]}/close", headers=headers)
     assert closed.json()["incident_id"] == ids[0]
     assert closed.json()["status"] == "closed"
@@ -189,3 +193,65 @@ def test_close_late_evidence_and_new_failure_reopen(tmp_path: Path) -> None:
     fresh = restarted.post("/v1/events/wazuh", json=alert("fresh", 15), headers=headers)
     assert fresh.json()["incident"]["incident_id"] == incident_id
     assert fresh.json()["incident"]["status"] == "open"
+
+
+def test_incident_history_records_only_transitions_and_survives_restart(tmp_path: Path) -> None:
+    path = str(tmp_path / "events.db")
+    client = TestClient(create_app(path, "secret"))
+    headers = {"x-api-key": "secret"}
+    assert client.get("/v1/incidents/missing/history").status_code == 401
+    assert client.get("/v1/incidents/missing/history", headers=headers).status_code == 404
+    client.post("/v1/events/wazuh", json=alert("a", 10), headers=headers)
+    incident = client.post("/v1/events/wazuh", json=alert("b", 12),
+                           headers=headers).json()["incident"]
+    incident_id = incident["incident_id"]
+    history_url = f"/v1/incidents/{incident_id}/history"
+    assert client.get(history_url, headers=headers).json() == []
+
+    closed = client.post(f"/v1/incidents/{incident_id}/close", headers=headers)
+    client.post(f"/v1/incidents/{incident_id}/close", headers=headers)
+    client.post("/v1/events/wazuh", json=alert("late", 8), headers=headers)
+    client.post("/v1/events/wazuh", json=alert("b", 12), headers=headers)
+    first_history = client.get(history_url, headers=headers).json()
+    assert len(first_history) == 1
+    assert first_history[0]["action"] == "closed"
+    assert first_history[0]["request_id"] == closed.headers["x-request-id"]
+    assert first_history[0]["event_id"] is None
+    assert first_history[0]["incident_id"] == incident_id
+    assert first_history[0]["occurred_at"]
+
+    client.post("/v1/events/wazuh", json=alert("fresh", 15), headers=headers)
+    restarted = TestClient(create_app(path, "secret"))
+    history = restarted.get(history_url, headers=headers).json()
+    assert [item["action"] for item in history] == ["closed", "reopened"]
+    assert [item["transition_id"] for item in history] == sorted(
+        item["transition_id"] for item in history
+    )
+    assert history[1]["event_source"] == "wazuh"
+    assert history[1]["event_id"] == "fresh"
+    assert history[1]["request_id"] is None
+
+
+def test_history_follows_merge_aliases(tmp_path: Path) -> None:
+    path = str(tmp_path / "events.db")
+    client = TestClient(create_app(path, "secret"))
+    headers = {"x-api-key": "secret"}
+    ids = []
+    for event_id, minute in (("a", 0), ("b", 5), ("c", 40), ("d", 45)):
+        incident = client.post("/v1/events/wazuh", json=alert(event_id, minute),
+                               headers=headers).json()["incident"]
+        if incident and incident["incident_id"] not in ids:
+            ids.append(incident["incident_id"])
+    client.post(f"/v1/incidents/{ids[1]}/close", headers=headers)
+    client.post("/v1/events/wazuh", json=alert("bridge-1", 20), headers=headers)
+    client.post("/v1/events/wazuh", json=alert("bridge-2", 30), headers=headers)
+    restarted = TestClient(create_app(path, "secret"))
+    for incident_id in ids:
+        history = restarted.get(f"/v1/incidents/{incident_id}/history", headers=headers).json()
+        assert len(history) == 2
+        assert history[0]["incident_id"] == ids[1]
+        assert history[0]["action"] == "closed"
+        assert history[1]["incident_id"] == ids[1]
+        assert history[1]["action"] == "merged"
+        assert history[1]["merged_into"] == ids[0]
+        assert history[1]["event_id"] == "bridge-2"

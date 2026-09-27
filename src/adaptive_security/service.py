@@ -56,5 +56,14 @@ class IngestionService:
                 incident = incident.model_copy(
                     update={"incident_id": oldest.incident_id, "status": status}
                 )
-            self.store.save_incident(conn, incident, events, old_ids - {incident.incident_id})
+            self.store.save_incident(
+                conn, incident, events, old_ids - {incident.incident_id}, persisted
+            )
+            if (
+                previous and oldest.status is IncidentStatus.CLOSED
+                and status is IncidentStatus.OPEN
+            ):
+                self.store.record_transition(
+                    conn, incident.incident_id, "reopened", event=persisted
+                )
             return persisted, incident

@@ -23,6 +23,13 @@ for current Wazuh signals use `wazuh` as the source and each evidence ID.
 `POST /v1/incidents/{incident_id}/close` closes an incident. A newly ingested
 failure with an event time later than the incident's previous last-seen time
 reopens it; older evidence leaves it closed. Repeated closes are idempotent.
+`GET /v1/incidents/{incident_id}/history` returns durable close/reopen/merge
+transitions in processing order. Close entries include the API request ID;
+reopen and merge entries name the triggering source and event ID. Merge entries
+also name the surviving ID. A retired incident alias retrieves the surviving
+incident's combined history while each entry retains the incident ID it had
+when recorded. Existing databases start with an empty history; earlier actions
+cannot be reconstructed.
 `/health` is unauthenticated. OpenAPI is available at `/docs`.
 Responses carry an `X-Request-ID`; structured request logs contain that ID,
 route, status, and duration without alert bodies or API keys. The Wazuh
@@ -131,7 +138,7 @@ through an old ID return the surviving incident with its current ID, including
 after subsequent merges. The incident list contains only current IDs. Aliases
 are created for merges after this upgrade; previously retired IDs cannot be
 reconstructed.
-Closure has no actor identity or audit trail because this POC uses one shared
-API key. Paginated retrieval and retention are subsequent work. Deploy behind
-TLS and network controls; the shared API key is a POC boundary, not a multi-user
-authorization system.
+The transition history cannot identify an individual analyst because this POC
+uses one shared API key. Paginated retrieval and retention are subsequent work.
+Deploy behind TLS and network controls; the shared API key is a POC boundary,
+not a multi-user authorization system.
