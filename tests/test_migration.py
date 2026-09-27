@@ -7,7 +7,16 @@ from adaptive_security.api import create_app
 from adaptive_security.connectors.wazuh import WazuhConnector
 from adaptive_security.correlation.engine import CorrelationEngine
 from adaptive_security.domain.incidents import IncidentStatus
-from tests.test_pipeline import alert
+
+
+def alert(event_id: str, minute: int) -> dict:
+    return {
+        "id": event_id,
+        "timestamp": f"2026-09-27T02:{minute:02d}:00Z",
+        "rule": {"id": "5710", "level": 5, "groups": ["authentication_failed"]},
+        "agent": {"name": "web-01"},
+        "data": {"srcuser": "alice"},
+    }
 
 
 def test_existing_database_migrates_without_losing_incident_state(tmp_path: Path) -> None:
@@ -52,4 +61,3 @@ def test_existing_database_migrates_without_losing_incident_state(tmp_path: Path
             "SELECT COUNT(*) FROM events WHERE incident_id = ?", (incident.incident_id,)
         ).fetchone()[0]
         assert associated == 3
-
