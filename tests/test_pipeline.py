@@ -75,3 +75,65 @@ def test_success_only_activity_does_not_create_incident(tmp_path: Path) -> None:
         assert response.status_code == 200
         assert response.json()["incident"] is None
     assert client.get("/v1/incidents", headers=headers).json() == []
+
+
+def test_incident_id_survives_growth_late_alerts_and_restart(tmp_path: Path) -> None:
+    path = str(tmp_path / "events.db")
+    client = TestClient(create_app(path, "secret"))
+    headers = {"x-api-key": "secret"}
+    for event_id, minute in (("first", 10), ("second", 12)):
+        response = client.post("/v1/events/wazuh", json=alert(event_id, minute), headers=headers)
+    incident_id = response.json()["incident"]["incident_id"]
+
+    late = client.post("/v1/events/wazuh", json=alert("late", 8), headers=headers)
+    assert late.json()["incident"]["incident_id"] == incident_id
+    more = client.post("/v1/events/wazuh", json=alert("more", 15), headers=headers)
+    assert more.json()["incident"]["incident_id"] == incident_id
+    assert more.json()["incident"]["event_ids"] == ["late", "first", "second", "more"]
+
+    restarted = TestClient(create_app(path, "secret"))
+    assert restarted.get(f"/v1/incidents/{incident_id}", headers=headers).status_code == 200
+    repeated = restarted.post("/v1/events/wazuh", json=alert("second", 12), headers=headers)
+    assert repeated.json()["incident"]["incident_id"] == incident_id
+
+
+def test_bridge_merges_incidents_under_oldest_id(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "events.db"), "secret"))
+    headers = {"x-api-key": "secret"}
+    ids = []
+    for event_id, minute in (("a", 0), ("b", 5), ("c", 40), ("d", 45)):
+        response = client.post("/v1/events/wazuh", json=alert(event_id, minute), headers=headers)
+        if response.json()["incident"]:
+            ids.append(response.json()["incident"]["incident_id"])
+    assert len(set(ids)) == 2
+    client.post("/v1/events/wazuh", json=alert("bridge-1", 20), headers=headers)
+    merged = client.post("/v1/events/wazuh", json=alert("bridge-2", 30), headers=headers)
+    assert merged.json()["incident"]["incident_id"] == ids[0]
+    assert len(client.get("/v1/incidents", headers=headers).json()) == 1
+    assert client.get(f"/v1/incidents/{ids[1]}", headers=headers).status_code == 404
+
+
+def test_close_late_evidence_and_new_failure_reopen(tmp_path: Path) -> None:
+    path = str(tmp_path / "events.db")
+    client = TestClient(create_app(path, "secret"))
+    headers = {"x-api-key": "secret"}
+    for event_id, minute in (("a", 10), ("b", 12)):
+        response = client.post("/v1/events/wazuh", json=alert(event_id, minute), headers=headers)
+    incident_id = response.json()["incident"]["incident_id"]
+    url = f"/v1/incidents/{incident_id}/close"
+    assert client.post(url).status_code == 401
+    assert client.post("/v1/incidents/missing/close", headers=headers).status_code == 404
+    assert client.post(url, headers=headers).json()["status"] == "closed"
+    assert client.post(url, headers=headers).json()["status"] == "closed"
+
+    late = client.post("/v1/events/wazuh", json=alert("late", 8), headers=headers)
+    assert late.json()["incident"]["status"] == "closed"
+    repeated = client.post("/v1/events/wazuh", json=alert("b", 12), headers=headers)
+    assert repeated.json()["incident"]["status"] == "closed"
+    restarted = TestClient(create_app(path, "secret"))
+    stored = restarted.get(f"/v1/incidents/{incident_id}", headers=headers)
+    assert stored.json()["status"] == "closed"
+
+    fresh = restarted.post("/v1/events/wazuh", json=alert("fresh", 15), headers=headers)
+    assert fresh.json()["incident"]["incident_id"] == incident_id
+    assert fresh.json()["incident"]["status"] == "open"
