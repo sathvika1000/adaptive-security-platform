@@ -110,6 +110,21 @@ def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAP
         return incident
 
     @app.get(
+        "/v1/incidents/{incident_id}/events",
+        response_model=list[SecurityEvent],
+        dependencies=[Depends(authorize)],
+    )
+    def get_incident_events(
+        incident_id: str,
+        limit: Annotated[int, Query(ge=1, le=100)] = 100,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> list[SecurityEvent]:
+        events = store.incident_events(incident_id, limit, offset)
+        if events is None:
+            raise HTTPException(status_code=404, detail="Incident not found")
+        return events
+
+    @app.get(
         "/v1/incidents/{incident_id}/history",
         response_model=list[IncidentTransition],
         dependencies=[Depends(authorize)],

@@ -74,6 +74,10 @@ class SQLiteStore:
             "CREATE INDEX IF NOT EXISTS events_by_identity "
             "ON events(correlation_key, event_time, source, event_id)"
         )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS events_by_incident "
+            "ON events(incident_id, event_time, source, event_id)"
+        )
         for source, event_id, body in conn.execute(
             "SELECT source, event_id, body FROM events WHERE event_time IS NULL"
         ):
@@ -317,6 +321,20 @@ class SQLiteStore:
     def incident(self, incident_id: str) -> Incident | None:
         with self.transaction() as conn:
             return self.stored_incident(conn, incident_id)
+
+    def incident_events(
+        self, incident_id: str, limit: int = 100, offset: int = 0
+    ) -> list[SecurityEvent] | None:
+        with self.transaction() as conn:
+            incident = self.stored_incident(conn, incident_id)
+            if incident is None:
+                return None
+            rows = conn.execute(
+                """SELECT body FROM events WHERE incident_id = ?
+                   ORDER BY event_time, source, event_id LIMIT ? OFFSET ?""",
+                (incident.incident_id, limit, offset),
+            ).fetchall()
+        return [SecurityEvent.model_validate_json(row[0]) for row in rows]
 
     def close_incident(self, incident_id: str, request_id: str | None = None) -> Incident | None:
         with self.transaction() as conn:
