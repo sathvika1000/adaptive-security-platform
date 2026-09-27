@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import logging
 import os
 import time
 from collections.abc import Callable
@@ -12,6 +13,7 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 MAX_LINE = 1024 * 1024
+logger = logging.getLogger(__name__)
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -83,6 +85,7 @@ def forward_once(
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = argparse.ArgumentParser(description="Forward Wazuh JSON alerts")
     parser.add_argument("alerts", type=Path, help="Wazuh alerts.json path")
     parser.add_argument("--checkpoint", type=Path, required=True)
@@ -101,7 +104,11 @@ def main() -> None:
     endpoint = args.url.rstrip("/") + "/v1/events/wazuh"
 
     while True:
-        forward_once(args.alerts, args.checkpoint, lambda alert: send_alert(endpoint, key, alert))
+        count = forward_once(
+            args.alerts, args.checkpoint, lambda alert: send_alert(endpoint, key, alert)
+        )
+        if count:
+            logger.info(json.dumps({"event": "wazuh_alerts_forwarded", "count": count}))
         if not args.follow:
             return
         time.sleep(1)

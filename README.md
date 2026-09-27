@@ -84,7 +84,9 @@ python -m adaptive_security.forwarder /var/ossec/logs/alerts/alerts.json \
 ```
 
 It sends each complete JSON line to the API and checkpoints only after a
-successful response. A failed delivery or malformed alert stops at that line
+successful response. It logs a structured delivered count after each successful
+batch, without alert bodies or API keys. A failed delivery or malformed alert
+stops at that line
 for diagnosis. Supervise and restart the command; duplicate deliveries are
 idempotent by source/event ID. Use HTTPS for a remote platform and keep the
 key outside source control. Run without `--follow` for a one-time replay.
