@@ -74,6 +74,17 @@ def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAP
         persisted, incident = service.ingest(event)
         return IngestionResult(event=persisted, incident=incident)
 
+    @app.get(
+        "/v1/events/{source}/{event_id}",
+        response_model=SecurityEvent,
+        dependencies=[Depends(authorize)],
+    )
+    def get_event(source: str, event_id: str) -> SecurityEvent:
+        event = store.event(source, event_id)
+        if event is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+        return event
+
     @app.get("/v1/incidents", response_model=list[Incident], dependencies=[Depends(authorize)])
     def list_incidents() -> list[Incident]:
         return store.incidents()

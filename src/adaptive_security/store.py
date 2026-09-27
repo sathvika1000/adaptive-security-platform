@@ -135,6 +135,14 @@ class SQLiteStore:
         ).fetchone()
         return Incident.model_validate_json(row[0]) if row else None
 
+    def event(self, source: str, event_id: str) -> SecurityEvent | None:
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT body FROM events WHERE source = ? AND event_id = ?",
+                (source, event_id),
+            ).fetchone()
+        return SecurityEvent.model_validate_json(row[0]) if row else None
+
     def incident(self, incident_id: str) -> Incident | None:
         with self.transaction() as conn:
             return self.stored_incident(conn, incident_id)
@@ -158,4 +166,3 @@ class SQLiteStore:
     def incidents(self) -> list[Incident]:
         with self.transaction() as conn:
             return self.stored_incidents(conn)
-
