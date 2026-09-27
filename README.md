@@ -75,6 +75,13 @@ incident. Severity is the maximum event severity. Events are ordered by time,
 source and ID.
 Duplicate source/ID ingestion returns the originally stored event.
 
+A versioned deterministic signal marks three or more failures followed by a
+success for that user and host within 15 minutes. The incident returns the
+three most recent failure IDs and the success ID as evidence, with a heuristic
+priority of 7/10. This sequence is a triage lead, not proof of compromise;
+ordinary password retries can match it. Incident severity remains the maximum
+source severity and is separate from signal priority.
+
 The POC indexes authentication events by user/host and event time. Each new
 event updates only its connected correlation run while preserving the ID of a
 matching incident as the run grows or late events arrive. Existing SQLite

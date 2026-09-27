@@ -1,5 +1,6 @@
 from adaptive_security.correlation.engine import CorrelationEngine
 from adaptive_security.correlation.policy import WINDOW, identity
+from adaptive_security.detection.auth_sequence import detect_auth_sequence
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentStatus
 from adaptive_security.store import SQLiteStore
@@ -39,7 +40,9 @@ class IngestionService:
             if len(events) < 2 or not any(candidate.outcome == "failure" for candidate in events):
                 return persisted, None
 
-            incident = CorrelationEngine().correlate(events)
+            incident = CorrelationEngine().correlate(events).model_copy(
+                update={"signals": detect_auth_sequence(events)}
+            )
             old_ids = {incident_id for _, incident_id in segment if incident_id}
             previous = [
                 old for incident_id in old_ids
