@@ -18,6 +18,7 @@
 - Authenticated canonical event retrieval by source and event ID for signal evidence.
 - Persisted user/host source IP baseline and first-seen success shadow signal,
   with isolated case-level evaluation and cold-start behavior.
+- Persistent aliases for incident IDs retired by late-alert merges.
 
 ## Current limits
 - Correlation remains a user/host authentication rule, not cross-category
@@ -26,13 +27,12 @@
   retention, and unbounded per-identity known-IP sets limit throughput.
 - The sequence signal is deterministic. Its priority is a heuristic; precision
   on representative real benign and malicious samples has not yet been measured.
-- Incident IDs survive membership growth, but merging two incident runs retires
-  one ID. Aliases for retired IDs and audited per-analyst lifecycle actions
-  are still pending.
+- Merges preserve old links through aliases for newly retired IDs. Audited
+  per-analyst lifecycle actions are still pending.
 - Live Wazuh manager forwarding and ARM64 development topology are not yet validated.
 
 ## Next
-1. Bounded history/retention, incident merge aliases, and auditable analyst actions.
+1. Bounded history/retention and auditable analyst actions.
 2. Validate forwarding against a real Wazuh manager and document host access.
 3. Validate the Compose topology on Docker Desktop and add operational signals.
 4. Run both signal evaluations on permissioned benign lookalikes and malicious

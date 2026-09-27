@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -8,7 +9,8 @@ from adaptive_security.api import create_app
 def alert(event_id: str, minute: int, user: str = "alice", host: str = "web-01") -> dict:
     return {
         "id": event_id,
-        "timestamp": f"2026-09-27T02:{minute:02d}:00Z",
+        "timestamp": (datetime(2026, 9, 27, 2, tzinfo=UTC) +
+                      timedelta(minutes=minute)).isoformat(),
         "rule": {"id": "5710", "level": 5, "groups": ["authentication_failed"]},
         "agent": {"name": host},
         "data": {"srcuser": user},
@@ -110,7 +112,39 @@ def test_bridge_merges_incidents_under_oldest_id(tmp_path: Path) -> None:
     merged = client.post("/v1/events/wazuh", json=alert("bridge-2", 30), headers=headers)
     assert merged.json()["incident"]["incident_id"] == ids[0]
     assert len(client.get("/v1/incidents", headers=headers).json()) == 1
-    assert client.get(f"/v1/incidents/{ids[1]}", headers=headers).status_code == 404
+    alias = client.get(f"/v1/incidents/{ids[1]}", headers=headers)
+    assert alias.json() == merged.json()["incident"]
+
+
+def test_merged_aliases_survive_transitive_merge_restart_and_close(tmp_path: Path) -> None:
+    path = str(tmp_path / "events.db")
+    client = TestClient(create_app(path, "secret"))
+    headers = {"x-api-key": "secret"}
+    ids = []
+    for event_id, minute in (("a", 0), ("b", 5), ("c", 40), ("d", 45),
+                             ("e", 80), ("f", 85)):
+        incident = client.post("/v1/events/wazuh", json=alert(event_id, minute),
+                               headers=headers).json()["incident"]
+        if incident and incident["incident_id"] not in ids:
+            ids.append(incident["incident_id"])
+    assert len(ids) == 3
+    for event_id, minute in (("first-bridge", 60), ("second-bridge", 70),
+                             ("third-bridge", 20), ("fourth-bridge", 30)):
+        merged = client.post("/v1/events/wazuh", json=alert(event_id, minute),
+                             headers=headers).json()["incident"]
+    assert merged["incident_id"] == ids[0]
+
+    restarted = TestClient(create_app(path, "secret"))
+    for alias_id in ids[1:]:
+        response = restarted.get(f"/v1/incidents/{alias_id}", headers=headers)
+        assert response.json() == merged
+    closed = restarted.post(f"/v1/incidents/{ids[2]}/close", headers=headers)
+    assert closed.json()["incident_id"] == ids[0]
+    assert closed.json()["status"] == "closed"
+    assert restarted.get(f"/v1/incidents/{ids[0]}", headers=headers).json() == closed.json()
+    assert len(restarted.get("/v1/incidents", headers=headers).json()) == 1
+    repeated = restarted.post("/v1/events/wazuh", json=alert("f", 85), headers=headers)
+    assert repeated.json()["incident"] == closed.json()
 
 
 def test_close_late_evidence_and_new_failure_reopen(tmp_path: Path) -> None:

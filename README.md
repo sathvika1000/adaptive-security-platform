@@ -125,7 +125,10 @@ databases are migrated on startup without discarding incidents or status.
 If a late alert bridges two incidents, the older incident ID survives and the
 other ID is retired. The lookup still scans the history for that user/host,
 so high-volume retention and partitioning are future work. Merge retirement
-does not provide an alias for the retired ID.
+keeps a persistent alias for the retired ID. GET and close through an old ID
+return the surviving incident with its current ID, including after subsequent
+merges. The incident list contains only current IDs. Aliases are created for
+merges after this upgrade; previously retired IDs cannot be reconstructed.
 Closure has no actor identity or audit trail because this POC uses one shared
 API key. Paginated retrieval and retention are subsequent work. Deploy behind
 TLS and network controls; the shared API key is a POC boundary, not a multi-user
