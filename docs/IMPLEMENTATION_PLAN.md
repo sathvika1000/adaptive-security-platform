@@ -5,6 +5,7 @@
 - Deterministic incident model and builder (PR #2).
 - SQLite event/incident persistence, authenticated ingestion and retrieval,
   and a tested two-alert authentication correlation path.
+- Application-only Compose topology and a replayable HTTP demonstration.
 
 ## Current limits
 - Correlation is a precise user/host authentication rule, not behavioral or
@@ -17,8 +18,7 @@
 ## Next
 1. Stable incident lifecycle and incremental, indexed event association.
 2. Resource-conscious Wazuh forwarding adapter with real alert validation.
-3. Container startup, replayable scenario, and operational signals.
+3. Validate the Compose topology on Docker Desktop and add operational signals.
 4. Measure a specific adaptive capability against benign lookalikes before promotion.
 
 Keep deterministic detection and evidence traceability through each slice.
-

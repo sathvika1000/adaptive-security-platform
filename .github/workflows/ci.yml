@@ -22,3 +22,4 @@ jobs:
       - run: ruff check .
       - run: mypy src
       - run: pytest --cov=adaptive_security --cov-report=term-missing --cov-fail-under=80
+      - run: docker build -t adaptive-security-platform:test .
