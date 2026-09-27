@@ -170,6 +170,58 @@ coverage, enroll a Wazuh agent and confirm its authentication alerts have
 a user (`dstuser` or `srcuser`) and agent name; manager-local test events do
 not monitor the Mac itself.
 
+## 6. Enroll the Mac itself (optional endpoint coverage)
+
+The manager-local SSH test proves the integration but does not monitor macOS.
+Wazuh 4.14.8 offers an Apple Silicon agent package. The agent runs persistently
+with elevated privileges and sends host security telemetry to this manager.
+This local development stack publishes enrollment (1515/TCP) and event
+transport (1514/TCP) on 127.0.0.1, so `WAZUH_MANAGER='127.0.0.1'` applies
+only to an agent installed on this same Mac. Do not use it for another host.
+
+On the Mac, first check whether an agent already exists:
+
+```sh
+test -e /Library/Ossec/etc/ossec.conf && echo 'Existing agent: inspect its configuration' || echo 'No agent installed'
+```
+
+If no agent is installed, download and install the pinned ARM64 package:
+
+```sh
+cd ~/Downloads
+curl -fL -O https://packages.wazuh.com/4.x/macos/wazuh-agent-4.14.8-1.arm64.pkg
+pkgutil --check-signature wazuh-agent-4.14.8-1.arm64.pkg
+(
+  set -e
+  umask 077
+  printf "WAZUH_MANAGER='127.0.0.1'\n" > /tmp/wazuh_envs
+  sudo installer -pkg wazuh-agent-4.14.8-1.arm64.pkg -target /
+  rm -f /tmp/wazuh_envs
+  sudo launchctl bootstrap system /Library/LaunchDaemons/com.wazuh.agent.plist
+)
+```
+
+Do not rerun the installer over an existing agent without first inspecting
+its manager address and enrollment state. The `sudo` commands prompt for the
+Mac administrator password locally; do not paste it into a chat or repository.
+
+Check the agent and manager registration:
+
+```sh
+sudo /Library/Ossec/bin/wazuh-control status
+sudo tail -n 30 /Library/Ossec/logs/ossec.log
+cd ~/adaptive-security-platform
+docker compose -p asp-wazuh \
+  -f ../wazuh-docker/single-node/docker-compose.yml \
+  -f deploy/wazuh-loopback.yaml exec -T wazuh.manager \
+  /var/ossec/bin/agent_control -l
+```
+
+Look for an `Active` agent with the Mac's computer name in the CLI or
+**Agents > Summary** in the dashboard. The agent may take a short time to
+enroll and report. If it does not, check its local log and that Docker
+Desktop is running and ports 1514/1515 remain published. The manager stack
+must be running whenever this agent tries to report.
 ## Stop and restart
 
 ```sh
