@@ -11,11 +11,14 @@
   and reopen lifecycle behavior.
 - Indexed event identity/time lookup and affected-run incident updates, with
   migration of existing SQLite databases.
+- Versioned, evidence-backed authentication sequence signal for analyst triage.
 
 ## Current limits
 - Correlation is a precise user/host authentication rule, not behavioral or
   cross-category detection. Per-identity history scans and unbounded retention
   still limit throughput.
+- The sequence signal is deterministic. Its priority is a heuristic; precision
+  on real benign and malicious samples has not yet been measured.
 - Incident IDs survive membership growth, but merging two incident runs retires
   one ID. Aliases for retired IDs and audited per-analyst lifecycle actions
   are still pending.
@@ -25,6 +28,7 @@
 1. Bounded history/retention, incident merge aliases, and auditable analyst actions.
 2. Validate forwarding against a real Wazuh manager and document host access.
 3. Validate the Compose topology on Docker Desktop and add operational signals.
-4. Measure a specific adaptive capability against benign lookalikes before promotion.
+4. Evaluate the sequence signal on benign lookalikes and malicious samples,
+   then measure an adaptive capability before promotion.
 
 Keep deterministic detection and evidence traceability through each slice.

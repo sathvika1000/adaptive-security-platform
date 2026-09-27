@@ -2,6 +2,7 @@ from enum import StrEnum
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from adaptive_security.domain.detections import DetectionSignal
 from adaptive_security.domain.events import EntityRef
 
 
@@ -21,3 +22,4 @@ class Incident(BaseModel):
     severity: int = Field(ge=0, le=10)
     event_ids: tuple[str, ...]
     entities: tuple[EntityRef, ...] = ()
+    signals: tuple[DetectionSignal, ...] = ()
