@@ -1,9 +1,11 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from adaptive_security.api import create_app
+from adaptive_security.domain.events import SecurityEvent
 
 
 def alert(event_id: str, minute: int, user: str = "alice", host: str = "web-01") -> dict:
@@ -145,6 +147,22 @@ def test_merged_aliases_survive_transitive_merge_restart_and_close(tmp_path: Pat
     assert len(restarted.get("/v1/incidents", headers=headers).json()) == 1
     repeated = restarted.post("/v1/events/wazuh", json=alert("f", 85), headers=headers)
     assert repeated.json()["incident"] == closed.json()
+
+
+def test_correlation_reads_only_connected_identity_run(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "events.db"), "secret"))
+    headers = {"x-api-key": "secret"}
+    for index in range(30):
+        response = client.post("/v1/events/wazuh", json=alert(str(index), index * 60),
+                               headers=headers)
+        assert response.json()["incident"] is None
+
+    with patch.object(SecurityEvent, "model_validate_json",
+                      wraps=SecurityEvent.model_validate_json) as decode:
+        response = client.post("/v1/events/wazuh", json=alert("new", 29 * 60 + 5),
+                               headers=headers)
+    assert response.json()["incident"]["event_ids"] == ["29", "new"]
+    assert decode.call_count == 1
 
 
 def test_close_late_evidence_and_new_failure_reopen(tmp_path: Path) -> None:

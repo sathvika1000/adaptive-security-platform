@@ -2,10 +2,10 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 
-from adaptive_security.correlation.policy import identity
+from adaptive_security.correlation.policy import WINDOW, identity
 from adaptive_security.domain.detections import DetectionSignal
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentStatus
@@ -116,18 +116,44 @@ class SQLiteStore:
         )
         return event, True, None
 
-    def events_for_identity(
-        self, conn: sqlite3.Connection, key: tuple[str, str]
+    def connected_events(
+        self, conn: sqlite3.Connection, event: SecurityEvent
     ) -> list[tuple[SecurityEvent, str | None]]:
-        encoded = json.dumps(key, separators=(",", ":"))
-        rows = conn.execute(
-            """SELECT body, incident_id FROM events
-               WHERE correlation_key = ?
-               ORDER BY event_time, source, event_id""",
-            (encoded,),
-        )
-        return [(SecurityEvent.model_validate_json(body), incident_id)
-                for body, incident_id in rows]
+        encoded = correlation_key(event)
+        if encoded is None:
+            return []
+
+        def neighbors(before: bool) -> list[tuple[SecurityEvent, str | None]]:
+            comparison = "<" if before else ">"
+            ordering = "DESC" if before else "ASC"
+            query = (
+                "SELECT event_time, body, incident_id FROM events "
+                f"WHERE correlation_key = ? AND (event_time, source, event_id) {comparison} "
+                f"(?, ?, ?) ORDER BY event_time {ordering}, source {ordering}, "
+                f"event_id {ordering} LIMIT 1"
+            )
+            found: list[tuple[SecurityEvent, str | None]] = []
+            cursor = event
+            while True:
+                row = conn.execute(
+                    query,
+                    (encoded, cursor.event_time.astimezone(UTC).isoformat(),
+                     cursor.source, cursor.event_id),
+                ).fetchone()
+                if row is None:
+                    break
+                neighbor_time = datetime.fromisoformat(row[0])
+                gap = (
+                    cursor.event_time - neighbor_time if before
+                    else neighbor_time - cursor.event_time
+                )
+                if gap > WINDOW:
+                    break
+                cursor = SecurityEvent.model_validate_json(row[1])
+                found.append((cursor, row[2]))
+            return found
+
+        return [*reversed(neighbors(True)), (event, None), *neighbors(False)]
 
     def source_baseline(
         self, conn: sqlite3.Connection, key: str

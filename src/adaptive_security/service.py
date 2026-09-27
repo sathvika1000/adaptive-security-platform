@@ -1,5 +1,5 @@
 from adaptive_security.correlation.engine import CorrelationEngine
-from adaptive_security.correlation.policy import WINDOW, identity
+from adaptive_security.correlation.policy import identity
 from adaptive_security.detection.auth_sequence import detect_auth_sequence
 from adaptive_security.detection.novel_source import detect_novel_source
 from adaptive_security.domain.events import SecurityEvent
@@ -30,22 +30,7 @@ class IngestionService:
                     self.store.save_event_signal(conn, persisted, signal)
                 self.store.save_source_baseline(conn, encoded_key, count + 1,
                                                 ips | {persisted.source_ip})
-            candidates = self.store.events_for_identity(conn, key)
-            position = next(
-                i for i, (candidate, _) in enumerate(candidates)
-                if (candidate.source, candidate.event_id) == (persisted.source, persisted.event_id)
-            )
-            start = position
-            end = position
-            while start and (
-                candidates[start][0].event_time - candidates[start - 1][0].event_time <= WINDOW
-            ):
-                start -= 1
-            while end + 1 < len(candidates) and (
-                candidates[end + 1][0].event_time - candidates[end][0].event_time <= WINDOW
-            ):
-                end += 1
-            segment = candidates[start : end + 1]
+            segment = self.store.connected_events(conn, persisted)
             events = [candidate for candidate, _ in segment]
             if len(events) < 2 or not any(candidate.outcome == "failure" for candidate in events):
                 return persisted, None

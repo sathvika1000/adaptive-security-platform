@@ -119,16 +119,18 @@ formed an incident. Labels must account for benign first-seen IPs and the
 five-success cold start; synthetic fixtures alone cannot justify promotion.
 
 The POC indexes authentication events by user/host and event time. Each new
-event updates only its connected correlation run while preserving the ID of a
-matching incident as the run grows or late events arrive. Existing SQLite
-databases are migrated on startup without discarding incidents or status.
+event walks indexed neighbors only within its connected correlation run,
+then updates that run while preserving the ID of a matching incident as it
+grows or late events arrive. A long uninterrupted run still requires reading
+all of its members. Existing SQLite databases are migrated on startup without
+discarding incidents or status.
 If a late alert bridges two incidents, the older incident ID survives and the
-other ID is retired. The lookup still scans the history for that user/host,
-so high-volume retention and partitioning are future work. Merge retirement
-keeps a persistent alias for the retired ID. GET and close through an old ID
-return the surviving incident with its current ID, including after subsequent
-merges. The incident list contains only current IDs. Aliases are created for
-merges after this upgrade; previously retired IDs cannot be reconstructed.
+other ID is retired. High-volume retention and partitioning are future work.
+Merge retirement keeps a persistent alias for the retired ID. GET and close
+through an old ID return the surviving incident with its current ID, including
+after subsequent merges. The incident list contains only current IDs. Aliases
+are created for merges after this upgrade; previously retired IDs cannot be
+reconstructed.
 Closure has no actor identity or audit trail because this POC uses one shared
 API key. Paginated retrieval and retention are subsequent work. Deploy behind
 TLS and network controls; the shared API key is a POC boundary, not a multi-user
