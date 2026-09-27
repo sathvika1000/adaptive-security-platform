@@ -83,7 +83,9 @@ for diagnosis. Supervise and restart the command; duplicate deliveries are
 idempotent by source/event ID. Use HTTPS for a remote platform and keep the
 key outside source control. Run without `--follow` for a one-time replay.
 Rotation or truncation resets the cursor; alerts removed before reading
-cannot be recovered by this adapter. Live manager validation remains.
+cannot be recovered by this adapter. A Wazuh 4.14.8 manager and the
+forwarder were validated on Apple Silicon Docker Desktop with live SCA alerts
+and manager-decoded synthetic SSH authentication alerts; see the setup guide.
 The checkpoint records a digest of the last delivered line, so truncation
 followed by rapid regrowth past the old offset normally resets safely. Older
 checkpoints are replayed once on upgrade; duplicate IDs are ignored by the API.
