@@ -25,6 +25,8 @@
 - Bounded, offset-based API pagination for incident listings and transition history.
 - Separate liveness and readiness endpoints; container health checks key and database readiness.
 - Forwarder checkpoints verify the last delivered line to detect fast truncate/regrow cycles.
+- Forwarder reports delivered batch counts without alert content and no longer
+  inherits the API health check as a misleading sidecar health signal.
 - Paginated incident evidence retrieval returns time-ordered canonical events,
   including through retired incident aliases and across event sources.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker

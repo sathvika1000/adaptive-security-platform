@@ -1,5 +1,7 @@
 import json
+import logging
 import os
+import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from threading import Thread
@@ -7,6 +9,7 @@ from urllib.error import HTTPError
 
 import pytest
 
+from adaptive_security import forwarder
 from adaptive_security.forwarder import forward_once, send_alert
 
 
@@ -113,3 +116,29 @@ def test_transport_does_not_follow_redirect_with_api_key() -> None:
         server.shutdown()
         thread.join()
         server.server_close()
+
+
+def test_cli_logs_delivery_count_without_alert_or_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    alerts = tmp_path / "alerts.json"
+    alerts.write_text('{"id":"secret-alert"}\n')
+    checkpoint = tmp_path / "cursor.json"
+    sent: list[str] = []
+    monkeypatch.setenv("ASP_API_KEY", "secret-key")
+    monkeypatch.setattr(sys, "argv", [
+        "forwarder", str(alerts), "--checkpoint", str(checkpoint)
+    ])
+    monkeypatch.setattr(forwarder, "send_alert", lambda endpoint, key, alert: sent.append(
+        alert["id"]
+    ))
+
+    with caplog.at_level(logging.INFO):
+        forwarder.main()
+
+    assert sent == ["secret-alert"]
+    assert json.loads(caplog.records[-1].message) == {
+        "event": "wazuh_alerts_forwarded", "count": 1
+    }
+    assert "secret-key" not in caplog.text
+    assert "secret-alert" not in caplog.text

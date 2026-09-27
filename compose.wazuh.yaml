@@ -23,6 +23,9 @@ services:
       - --follow
       - --url
       - http://127.0.0.1:8000
+    # The image's default health check probes the API, not this forwarder.
+    healthcheck:
+      disable: true
     restart: unless-stopped
 
 volumes:

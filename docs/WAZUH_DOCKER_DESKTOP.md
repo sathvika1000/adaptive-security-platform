@@ -122,6 +122,11 @@ The shared network namespace lets the sidecar contact the API on loopback.
 If Wazuh has not produced `alerts.json` yet, the forwarder retries on its
 restart policy. A malformed alert or failed API delivery stops on that line;
 check its logs rather than deleting the cursor.
+The forwarder logs `{"event":"wazuh_alerts_forwarded","count":N}` after a
+successful batch. An empty log when no alerts arrive is normal. Its Compose
+service intentionally has no inherited API health check: `Up` says that the
+forwarder process is running; `/ready` checks the platform API separately.
+Confirm delivery by retrieving a Wazuh event from the API as shown below.
 
 ## 5. Verify Wazuh decoding and incident correlation
 
