@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from adaptive_security.domain.events import EntityRef, EventCategory, SecurityEvent
 
@@ -26,7 +26,7 @@ class WazuhAlert(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     id: str
-    timestamp: datetime
+    timestamp: AwareDatetime
     rule: WazuhRule
     agent: WazuhAgent | None = None
     data: dict[str, Any] = Field(default_factory=dict)
@@ -49,7 +49,7 @@ class WazuhConnector:
         alert = WazuhAlert.model_validate(payload)
         groups = {group.lower() for group in alert.rule.groups}
         category = next(
-            (_CATEGORY_BY_GROUP[group] for group in groups if group in _CATEGORY_BY_GROUP),
+            (_CATEGORY_BY_GROUP[group] for group in sorted(groups) if group in _CATEGORY_BY_GROUP),
             EventCategory.OTHER,
         )
 

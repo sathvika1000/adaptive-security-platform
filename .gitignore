@@ -25,6 +25,8 @@ venv/
 logs/
 data/local/
 artifacts/
+*.db
+*.db-*
 
 # Build
 build/
