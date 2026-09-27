@@ -18,6 +18,9 @@ uvicorn adaptive_security.api:app --host 127.0.0.1 --port 8000
 POST one Wazuh alert JSON to `/v1/events/wazuh` with `X-API-Key`.
 The response includes the canonical event and an incident when correlated.
 GET `/v1/incidents` or `/v1/incidents/{incident_id}` with the same header.
+`POST /v1/incidents/{incident_id}/close` closes an incident. A newly ingested
+failure with an event time later than the incident's previous last-seen time
+reopens it; older evidence leaves it closed. Repeated closes are idempotent.
 `/health` is unauthenticated. OpenAPI is available at `/docs`.
 
 For a reproducible demonstration, send two authentication alerts with distinct
@@ -72,9 +75,12 @@ incident. Severity is the maximum event severity. Events are ordered by time,
 source and ID.
 Duplicate source/ID ingestion returns the originally stored event.
 
-The POC recomputes incidents transactionally after each ingestion, so incident
-IDs can change as a run grows or late events arrive. This is suitable for small
-local datasets, not high-volume ingestion or analyst state. Incident status
-updates, paginated retrieval, and retention are subsequent work. Deploy behind
+The POC recomputes incidents transactionally after each new event while
+preserving the ID of a matching incident as its run grows or late events arrive.
+If a late alert bridges two incidents, the older incident ID survives and the
+other ID is retired. This is suitable for small local datasets, not high-volume
+ingestion. Merge retirement does not provide an alias for the retired ID.
+Closure has no actor identity or audit trail because this POC uses one shared
+API key. Paginated retrieval and retention are subsequent work. Deploy behind
 TLS and network controls; the shared API key is a POC boundary, not a multi-user
 authorization system.

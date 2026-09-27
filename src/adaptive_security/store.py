@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from adaptive_security.domain.events import SecurityEvent
-from adaptive_security.domain.incidents import Incident
+from adaptive_security.domain.incidents import Incident, IncidentStatus
 
 
 class SQLiteStore:
@@ -38,18 +38,20 @@ class SQLiteStore:
         finally:
             conn.close()
 
-    def put_event(self, conn: sqlite3.Connection, event: SecurityEvent) -> SecurityEvent:
+    def put_event(
+        self, conn: sqlite3.Connection, event: SecurityEvent
+    ) -> tuple[SecurityEvent, bool]:
         row = conn.execute(
             "SELECT body FROM events WHERE source = ? AND event_id = ?",
             (event.source, event.event_id),
         ).fetchone()
         if row:
-            return SecurityEvent.model_validate_json(row[0])
+            return SecurityEvent.model_validate_json(row[0]), False
         conn.execute(
             "INSERT INTO events (source, event_id, body) VALUES (?, ?, ?)",
             (event.source, event.event_id, event.model_dump_json()),
         )
-        return event
+        return event, True
 
     def events(self, conn: sqlite3.Connection) -> list[SecurityEvent]:
         rows = conn.execute("SELECT body FROM events")
@@ -69,7 +71,26 @@ class SQLiteStore:
             ).fetchone()
         return Incident.model_validate_json(row[0]) if row else None
 
+    def close_incident(self, incident_id: str) -> Incident | None:
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT body FROM incidents WHERE incident_id = ?", (incident_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            incident = Incident.model_validate_json(row[0]).model_copy(
+                update={"status": IncidentStatus.CLOSED}
+            )
+            conn.execute(
+                "UPDATE incidents SET body = ? WHERE incident_id = ?",
+                (incident.model_dump_json(), incident_id),
+            )
+            return incident
+
+    def stored_incidents(self, conn: sqlite3.Connection) -> list[Incident]:
+        rows = conn.execute("SELECT body FROM incidents ORDER BY incident_id").fetchall()
+        return [Incident.model_validate_json(row[0]) for row in rows]
+
     def incidents(self) -> list[Incident]:
         with self.transaction() as conn:
-            rows = conn.execute("SELECT body FROM incidents ORDER BY incident_id").fetchall()
-        return [Incident.model_validate_json(row[0]) for row in rows]
+            return self.stored_incidents(conn)

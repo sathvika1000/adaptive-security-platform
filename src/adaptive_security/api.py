@@ -51,6 +51,17 @@ def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAP
             raise HTTPException(status_code=404, detail="Incident not found")
         return incident
 
+    @app.post(
+        "/v1/incidents/{incident_id}/close",
+        response_model=Incident,
+        dependencies=[Depends(authorize)],
+    )
+    def close_incident(incident_id: str) -> Incident:
+        incident = store.close_incident(incident_id)
+        if incident is None:
+            raise HTTPException(status_code=404, detail="Incident not found")
+        return incident
+
     return app
 
 
