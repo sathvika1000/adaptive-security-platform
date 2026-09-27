@@ -1,7 +1,8 @@
 from enum import StrEnum
+from ipaddress import ip_address
 from typing import Any
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 
 class EventCategory(StrEnum):
@@ -32,6 +33,12 @@ class SecurityEvent(BaseModel):
     observed_time: AwareDatetime
     action: str | None = None
     outcome: str | None = None
+    source_ip: str | None = None
     severity: int = Field(default=0, ge=0, le=10)
     entities: tuple[EntityRef, ...] = ()
     attributes: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("source_ip")
+    @classmethod
+    def normalize_source_ip(cls, value: str | None) -> str | None:
+        return str(ip_address(value)) if value is not None else None

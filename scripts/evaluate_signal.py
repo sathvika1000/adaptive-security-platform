@@ -1,4 +1,4 @@
-"""Evaluate the authentication sequence signal on labeled canonical event cases."""
+"""Evaluate one authentication signal on labeled canonical event cases."""
 
 import argparse
 from collections.abc import Iterator
@@ -28,11 +28,13 @@ def load_cases(path: Path) -> Iterator[EvaluationCase]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate the authentication sequence signal")
+    parser = argparse.ArgumentParser(description="Evaluate an authentication signal")
     parser.add_argument("cases", type=Path, help="JSONL file of labeled canonical event cases")
+    parser.add_argument("--rule", choices=("auth.failures_then_success", "auth.novel_source_ip"),
+                        default="auth.failures_then_success")
     args = parser.parse_args()
     try:
-        summary = evaluate(load_cases(args.cases))
+        summary = evaluate(load_cases(args.cases), rule_id=args.rule)
     except (OSError, ValueError) as error:
         parser.error(str(error))
     print(summary.model_dump_json(indent=2))

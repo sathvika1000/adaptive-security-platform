@@ -6,6 +6,7 @@ from datetime import UTC
 from pathlib import Path
 
 from adaptive_security.correlation.policy import identity
+from adaptive_security.domain.detections import DetectionSignal
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentStatus
 
@@ -34,6 +35,18 @@ class SQLiteStore:
         conn.execute(
             """CREATE TABLE IF NOT EXISTS incidents (
                 incident_id TEXT PRIMARY KEY, body TEXT NOT NULL
+            )"""
+        )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS auth_baselines (
+                correlation_key TEXT PRIMARY KEY, success_count INTEGER NOT NULL,
+                source_ips TEXT NOT NULL
+            )"""
+        )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS event_signals (
+                source TEXT NOT NULL, event_id TEXT NOT NULL, body TEXT NOT NULL,
+                PRIMARY KEY (source, event_id)
             )"""
         )
         columns = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
@@ -110,6 +123,52 @@ class SQLiteStore:
         )
         return [(SecurityEvent.model_validate_json(body), incident_id)
                 for body, incident_id in rows]
+
+    def source_baseline(
+        self, conn: sqlite3.Connection, key: str
+    ) -> tuple[int, set[str]]:
+        row = conn.execute(
+            "SELECT success_count, source_ips FROM auth_baselines WHERE correlation_key = ?", (key,)
+        ).fetchone()
+        return (row[0], set(json.loads(row[1]))) if row else (0, set())
+
+    def save_source_baseline(
+        self, conn: sqlite3.Connection, key: str, count: int, ips: set[str]
+    ) -> None:
+        conn.execute(
+            """INSERT INTO auth_baselines (correlation_key, success_count, source_ips)
+               VALUES (?, ?, ?) ON CONFLICT(correlation_key) DO UPDATE SET
+               success_count = excluded.success_count, source_ips = excluded.source_ips""",
+            (key, count, json.dumps(sorted(ips))),
+        )
+
+    def save_event_signal(
+        self, conn: sqlite3.Connection, event: SecurityEvent, signal: DetectionSignal
+    ) -> None:
+        conn.execute(
+            "INSERT INTO event_signals (source, event_id, body) VALUES (?, ?, ?)",
+            (event.source, event.event_id, signal.model_dump_json()),
+        )
+
+    def signals_for_events(
+        self, conn: sqlite3.Connection, events: list[SecurityEvent]
+    ) -> tuple[DetectionSignal, ...]:
+        signals = []
+        for event in events:
+            row = conn.execute(
+                "SELECT body FROM event_signals WHERE source = ? AND event_id = ?",
+                (event.source, event.event_id),
+            ).fetchone()
+            if row:
+                signals.append(DetectionSignal.model_validate_json(row[0]))
+        return tuple(signals)
+
+    def event_signals(self) -> list[DetectionSignal]:
+        with self.transaction() as conn:
+            rows = conn.execute(
+                "SELECT body FROM event_signals ORDER BY source, event_id"
+            ).fetchall()
+        return [DetectionSignal.model_validate_json(row[0]) for row in rows]
 
     def save_incident(
         self, conn: sqlite3.Connection, incident: Incident,

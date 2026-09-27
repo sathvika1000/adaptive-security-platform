@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -9,4 +11,4 @@ class DetectionSignal(BaseModel):
     title: str = Field(min_length=1)
     evidence_event_ids: tuple[str, ...] = Field(min_length=1)
     priority: int = Field(ge=0, le=10)
-
+    mode: Literal["active", "shadow"] = "active"
