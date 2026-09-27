@@ -27,7 +27,11 @@ class EvaluationSummary(BaseModel):
     recall: float | None
 
 
-def evaluate(cases: Iterable[EvaluationCase]) -> EvaluationSummary:
+def evaluate(
+    cases: Iterable[EvaluationCase], rule_id: Literal[
+        "auth.failures_then_success", "auth.novel_source_ip"
+    ] = "auth.failures_then_success"
+) -> EvaluationSummary:
     counts = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
     with TemporaryDirectory() as directory:
         for number, case in enumerate(cases):
@@ -35,11 +39,9 @@ def evaluate(cases: Iterable[EvaluationCase]) -> EvaluationSummary:
             service = IngestionService(store)
             for event in case.events:
                 service.ingest(event)
-            detected = any(
-                signal.rule_id == "auth.failures_then_success"
-                for incident in store.incidents()
-                for signal in incident.signals
-            )
+            signals = (store.event_signals() if rule_id == "auth.novel_source_ip" else
+                       [signal for incident in store.incidents() for signal in incident.signals])
+            detected = any(signal.rule_id == rule_id for signal in signals)
             if detected:
                 counts["tp" if case.label == "malicious" else "fp"] += 1
             else:
@@ -55,4 +57,3 @@ def evaluate(cases: Iterable[EvaluationCase]) -> EvaluationSummary:
         precision=counts["tp"] / predicted if predicted else None,
         recall=counts["tp"] / malicious if malicious else None,
     )
-

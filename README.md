@@ -88,6 +88,20 @@ priority of 7/10. This sequence is a triage lead, not proof of compromise;
 ordinary password retries can match it. Incident severity remains the maximum
 source severity and is separate from signal priority.
 
+A separate `auth.novel_source_ip` signal learns successful Wazuh authentication
+source IPs (`data.srcip`) for each user and host. After five successful events
+with a valid source IP, a success from an IP not previously seen for that pair
+records a versioned shadow signal with that event ID as evidence and priority
+4/10. Shadow signals appear on an incident if its correlation run also contains
+a failure; success-only activity never opens an incident. They do not change
+severity, close/reopen behavior, or trigger a response. Duplicate events do not
+train the baseline twice. The baseline and observations persist across restarts.
+The rule uses ingestion order for learning, including late events. On upgrade,
+existing event history is not retrospectively trained or signaled: each pair
+starts with a cold baseline. Known VPN rotation, travel, shared IPs, and
+attacker-influenced history can produce false positives or suppress a signal.
+It does not infer geography or establish compromise.
+
 ## Evaluate the sequence signal
 
 Provide a JSONL file with one labeled case per line. Each line has a unique
@@ -99,6 +113,10 @@ normal ingestion and incident path. The output counts case-level true/false
 positives and negatives and computes precision and recall when defined.
 It prints only aggregate counts; use deidentified, permissioned examples.
 Synthetic cases test the evaluation contract, not real-world detection quality.
+Pass `--rule auth.novel_source_ip` to evaluate the shadow rule. Its case-level
+counts include persisted shadow observations even if success-only cases never
+formed an incident. Labels must account for benign first-seen IPs and the
+five-success cold start; synthetic fixtures alone cannot justify promotion.
 
 The POC indexes authentication events by user/host and event time. Each new
 event updates only its connected correlation run while preserving the ID of a

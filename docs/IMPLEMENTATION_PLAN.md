@@ -16,11 +16,14 @@
 - Case-level evaluation harness using the production ingestion path and labeled
   canonical event sequences.
 - Authenticated canonical event retrieval by source and event ID for signal evidence.
+- Persisted user/host source IP baseline and first-seen success shadow signal,
+  with isolated case-level evaluation and cold-start behavior.
 
 ## Current limits
-- Correlation is a precise user/host authentication rule, not behavioral or
-  cross-category detection. Per-identity history scans and unbounded retention
-  still limit throughput.
+- Correlation remains a user/host authentication rule, not cross-category
+  detection. The stateful novelty observation is shadow-only and has no
+  measured real-world precision. Per-identity history scans, unbounded event
+  retention, and unbounded per-identity known-IP sets limit throughput.
 - The sequence signal is deterministic. Its priority is a heuristic; precision
   on representative real benign and malicious samples has not yet been measured.
 - Incident IDs survive membership growth, but merging two incident runs retires
@@ -32,7 +35,7 @@
 1. Bounded history/retention, incident merge aliases, and auditable analyst actions.
 2. Validate forwarding against a real Wazuh manager and document host access.
 3. Validate the Compose topology on Docker Desktop and add operational signals.
-4. Run the evaluation harness on permissioned benign lookalikes and malicious
-   samples, then measure an adaptive capability before promotion.
+4. Run both signal evaluations on permissioned benign lookalikes and malicious
+   samples before considering shadow signal promotion.
 
 Keep deterministic detection and evidence traceability through each slice.

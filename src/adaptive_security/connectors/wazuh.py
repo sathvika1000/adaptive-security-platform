@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from ipaddress import ip_address
 from typing import Any
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -66,7 +67,14 @@ class WazuhConnector:
 
         source_ip = alert.data.get("srcip")
         if isinstance(source_ip, str) and source_ip:
-            entities.append(EntityRef(type="ip", value=source_ip))
+            try:
+                source_ip = str(ip_address(source_ip))
+            except ValueError:
+                source_ip = None
+            if source_ip is not None:
+                entities.append(EntityRef(type="ip", value=source_ip))
+        else:
+            source_ip = None
 
         outcome = None
         if "authentication_failed" in groups:
@@ -81,6 +89,7 @@ class WazuhConnector:
             event_time=alert.timestamp,
             observed_time=datetime.now(UTC),
             outcome=outcome,
+            source_ip=source_ip,
             severity=min(alert.rule.level, 10),
             entities=tuple(entities),
             attributes={"rule_id": str(alert.rule.id), "groups": sorted(groups)},
