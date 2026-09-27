@@ -1,68 +1,8 @@
-from datetime import timedelta
-
 from adaptive_security.correlation.engine import CorrelationEngine
-from adaptive_security.domain.events import EventCategory, SecurityEvent
+from adaptive_security.correlation.policy import WINDOW, identity
+from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentStatus
 from adaptive_security.store import SQLiteStore
-
-WINDOW = timedelta(minutes=15)
-
-
-def identity(event: SecurityEvent) -> tuple[str, str] | None:
-    if event.category is not EventCategory.AUTHENTICATION:
-        return None
-    users = sorted(entity.value for entity in event.entities if entity.type == "user")
-    hosts = sorted(entity.value for entity in event.entities if entity.type == "host")
-    return (users[0], hosts[0]) if users and hosts else None
-
-
-def correlate(events: list[SecurityEvent]) -> list[Incident]:
-    groups: dict[tuple[str, str], list[SecurityEvent]] = {}
-    for event in events:
-        key = identity(event)
-        if key is not None:
-            groups.setdefault(key, []).append(event)
-
-    incidents: list[Incident] = []
-    engine = CorrelationEngine()
-    for group in groups.values():
-        ordered = sorted(group, key=lambda e: (e.event_time, e.source, e.event_id))
-        segment: list[SecurityEvent] = []
-        for event in ordered:
-            if segment and event.event_time - segment[-1].event_time > WINDOW:
-                if len(segment) >= 2 and any(e.outcome == "failure" for e in segment):
-                    incidents.append(engine.correlate(segment))
-                segment = []
-            segment.append(event)
-        if len(segment) >= 2 and any(e.outcome == "failure" for e in segment):
-            incidents.append(engine.correlate(segment))
-    return incidents
-
-
-def preserve_incident_ids(
-    current: list[Incident], previous: list[Incident], new_event: SecurityEvent
-) -> list[Incident]:
-    result: list[Incident] = []
-    for incident in current:
-        event_ids = set(incident.event_ids)
-        matches = [
-            old for old in previous if event_ids.intersection(old.event_ids)
-        ]
-        if matches:
-            oldest = min(matches, key=lambda old: (old.first_seen, old.incident_id))
-            status = oldest.status
-            if (
-                status is IncidentStatus.CLOSED
-                and new_event.event_id in incident.event_ids
-                and new_event.outcome == "failure"
-                and new_event.event_time > oldest.last_seen
-            ):
-                status = IncidentStatus.OPEN
-            incident = incident.model_copy(
-                update={"incident_id": oldest.incident_id, "status": status}
-            )
-        result.append(incident)
-    return result
 
 
 class IngestionService:
@@ -71,15 +11,51 @@ class IngestionService:
 
     def ingest(self, event: SecurityEvent) -> tuple[SecurityEvent, Incident | None]:
         with self.store.transaction() as conn:
-            persisted, inserted = self.store.put_event(conn, event)
-            previous = self.store.stored_incidents(conn)
-            incidents = previous
-            if inserted:
-                incidents = preserve_incident_ids(
-                    correlate(self.store.events(conn)), previous, persisted
-                )
-                self.store.replace_incidents(conn, incidents)
-            incident = next(
-                (item for item in incidents if persisted.event_id in item.event_ids), None
+            persisted, inserted, existing_id = self.store.put_event(conn, event)
+            if not inserted:
+                existing = self.store.stored_incident(conn, existing_id) if existing_id else None
+                return persisted, existing
+
+            key = identity(persisted)
+            if key is None:
+                return persisted, None
+            candidates = self.store.events_for_identity(conn, key)
+            position = next(
+                i for i, (candidate, _) in enumerate(candidates)
+                if (candidate.source, candidate.event_id) == (persisted.source, persisted.event_id)
             )
+            start = position
+            end = position
+            while start and (
+                candidates[start][0].event_time - candidates[start - 1][0].event_time <= WINDOW
+            ):
+                start -= 1
+            while end + 1 < len(candidates) and (
+                candidates[end + 1][0].event_time - candidates[end][0].event_time <= WINDOW
+            ):
+                end += 1
+            segment = candidates[start : end + 1]
+            events = [candidate for candidate, _ in segment]
+            if len(events) < 2 or not any(candidate.outcome == "failure" for candidate in events):
+                return persisted, None
+
+            incident = CorrelationEngine().correlate(events)
+            old_ids = {incident_id for _, incident_id in segment if incident_id}
+            previous = [
+                old for incident_id in old_ids
+                if (old := self.store.stored_incident(conn, incident_id)) is not None
+            ]
+            if previous:
+                oldest = min(previous, key=lambda old: (old.first_seen, old.incident_id))
+                status = oldest.status
+                if (
+                    status is IncidentStatus.CLOSED
+                    and persisted.outcome == "failure"
+                    and persisted.event_time > oldest.last_seen
+                ):
+                    status = IncidentStatus.OPEN
+                incident = incident.model_copy(
+                    update={"incident_id": oldest.incident_id, "status": status}
+                )
+            self.store.save_incident(conn, incident, events, old_ids - {incident.incident_id})
             return persisted, incident

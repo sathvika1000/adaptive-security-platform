@@ -75,11 +75,14 @@ incident. Severity is the maximum event severity. Events are ordered by time,
 source and ID.
 Duplicate source/ID ingestion returns the originally stored event.
 
-The POC recomputes incidents transactionally after each new event while
-preserving the ID of a matching incident as its run grows or late events arrive.
+The POC indexes authentication events by user/host and event time. Each new
+event updates only its connected correlation run while preserving the ID of a
+matching incident as the run grows or late events arrive. Existing SQLite
+databases are migrated on startup without discarding incidents or status.
 If a late alert bridges two incidents, the older incident ID survives and the
-other ID is retired. This is suitable for small local datasets, not high-volume
-ingestion. Merge retirement does not provide an alias for the retired ID.
+other ID is retired. The lookup still scans the history for that user/host,
+so high-volume retention and partitioning are future work. Merge retirement
+does not provide an alias for the retired ID.
 Closure has no actor identity or audit trail because this POC uses one shared
 API key. Paginated retrieval and retention are subsequent work. Deploy behind
 TLS and network controls; the shared API key is a POC boundary, not a multi-user
