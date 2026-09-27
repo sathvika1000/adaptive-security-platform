@@ -44,13 +44,13 @@ def test_ingestion_body_limit_accepts_boundary_and_rejects_oversize(tmp_path: Pa
 
 def test_request_log_excludes_payload_and_credentials(tmp_path: Path, caplog) -> None:
     client = TestClient(create_app(str(tmp_path / "events.db"), "private-key"))
-    with caplog.at_level(logging.INFO, logger="adaptive_security.api"):
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
         response = client.post(
             "/v1/events/wazuh", json=alert(), headers={"x-api-key": "private-key"}
         )
     assert response.status_code == 200
     entries = [json.loads(record.message) for record in caplog.records
-               if record.name == "adaptive_security.api"]
+               if record.name == "uvicorn.error"]
     assert len(entries) == 1
     entry = entries[0]
     assert entry["request_id"] == response.headers["x-request-id"]

@@ -23,7 +23,7 @@ class IngestionResult(BaseModel):
     incident: Incident | None
 
 
-logger = logging.getLogger("adaptive_security.api")
+logger = logging.getLogger("uvicorn.error")
 
 
 def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAPI:
