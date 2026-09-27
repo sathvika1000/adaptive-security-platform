@@ -1,0 +1,87 @@
+from datetime import UTC, datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from adaptive_security.domain.events import EntityRef, EventCategory, SecurityEvent
+
+
+class WazuhAgent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str | None = None
+    name: str | None = None
+    ip: str | None = None
+
+
+class WazuhRule(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str | int
+    level: int = Field(ge=0)
+    groups: list[str] = Field(default_factory=list)
+
+
+class WazuhAlert(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    timestamp: datetime
+    rule: WazuhRule
+    agent: WazuhAgent | None = None
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+_CATEGORY_BY_GROUP = {
+    "authentication_failed": EventCategory.AUTHENTICATION,
+    "authentication_success": EventCategory.AUTHENTICATION,
+    "authentication": EventCategory.AUTHENTICATION,
+    "process": EventCategory.PROCESS,
+    "network": EventCategory.NETWORK,
+    "dns": EventCategory.DNS,
+    "syscheck": EventCategory.FILE,
+    "file": EventCategory.FILE,
+}
+
+
+class WazuhConnector:
+    def normalize(self, payload: dict[str, Any]) -> SecurityEvent:
+        alert = WazuhAlert.model_validate(payload)
+        groups = {group.lower() for group in alert.rule.groups}
+        category = next(
+            (_CATEGORY_BY_GROUP[group] for group in groups if group in _CATEGORY_BY_GROUP),
+            EventCategory.OTHER,
+        )
+
+        entities: list[EntityRef] = []
+        if alert.agent:
+            if alert.agent.name:
+                entities.append(EntityRef(type="host", value=alert.agent.name))
+            if alert.agent.ip:
+                entities.append(EntityRef(type="ip", value=alert.agent.ip))
+
+        user = alert.data.get("srcuser") or alert.data.get("user")
+        if isinstance(user, str) and user:
+            entities.append(EntityRef(type="user", value=user))
+
+        source_ip = alert.data.get("srcip")
+        if isinstance(source_ip, str) and source_ip:
+            entities.append(EntityRef(type="ip", value=source_ip))
+
+        outcome = None
+        if "authentication_failed" in groups:
+            outcome = "failure"
+        elif "authentication_success" in groups:
+            outcome = "success"
+
+        return SecurityEvent(
+            event_id=alert.id,
+            source="wazuh",
+            category=category,
+            event_time=alert.timestamp,
+            observed_time=datetime.now(UTC),
+            outcome=outcome,
+            severity=min(alert.rule.level, 10),
+            entities=tuple(entities),
+            attributes={"rule_id": str(alert.rule.id), "groups": sorted(groups)},
+        )
