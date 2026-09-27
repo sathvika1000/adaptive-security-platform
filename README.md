@@ -18,6 +18,10 @@ uvicorn adaptive_security.api:app --host 127.0.0.1 --port 8000
 POST one Wazuh alert JSON to `/v1/events/wazuh` with `X-API-Key`.
 The response includes the canonical event and an incident when correlated.
 GET `/v1/incidents` or `/v1/incidents/{incident_id}` with the same header.
+The incident list and each incident's `/history` endpoint accept `limit`
+(1–100, default 100) and `offset` (zero or greater, default 0). Both return
+arrays ordered by incident ID or transition ID respectively; request the next
+page by increasing `offset`. Concurrent incident merges can shift list offsets.
 GET `/v1/events/{source}/{event_id}` retrieves stored canonical evidence;
 for current Wazuh signals use `wazuh` as the source and each evidence ID.
 `POST /v1/incidents/{incident_id}/close` closes an incident. A newly ingested
@@ -139,6 +143,6 @@ after subsequent merges. The incident list contains only current IDs. Aliases
 are created for merges after this upgrade; previously retired IDs cannot be
 reconstructed.
 The transition history cannot identify an individual analyst because this POC
-uses one shared API key. Paginated retrieval and retention are subsequent work.
+uses one shared API key. Event retention remains future work.
 Deploy behind TLS and network controls; the shared API key is a POC boundary,
 not a multi-user authorization system.
