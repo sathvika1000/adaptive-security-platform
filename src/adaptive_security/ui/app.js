@@ -223,7 +223,9 @@ el("close-form").addEventListener("submit", async (event) => {
       redirect: "error",
     });
     if (!response.ok) throw new Error(response.status === 401 ?
-      "Analyst key was rejected." : `Could not close incident (HTTP ${response.status}).`);
+      "Analyst key was rejected." : response.status === 403 ?
+      "This analyst key cannot close incidents." :
+      `Could not close incident (HTTP ${response.status}).`);
     const updated = await response.json();
     if (currentSession !== session) return;
     await incidents(incidentOffset);
