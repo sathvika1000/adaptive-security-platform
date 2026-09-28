@@ -65,6 +65,9 @@
 - Verified-backup storage trend reports observed platform event, incident,
   and database-size changes across snapshots without touching the live store
   or extrapolating from short observation windows.
+- Read-only Wazuh Docker measurement reports indexer data and manager/alert
+  log allocation separately from the platform database, without touching
+  the running volumes or printing alert content.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.

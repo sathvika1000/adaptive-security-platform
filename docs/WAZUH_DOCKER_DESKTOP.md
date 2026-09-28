@@ -151,6 +151,23 @@ includes events, incidents, aliases, transitions, baselines, and signals; it
 does not include Wazuh's indexer, manager, or forwarder cursor volumes. Avoid
 deleting the live database or its volume as part of the backup procedure.
 
+## Check Wazuh storage growth
+
+From `~/adaptive-security-platform`, run this read-only measurement against
+the Wazuh 4.14.8 containers:
+
+```sh
+python3 scripts/wazuh_storage.py
+```
+
+It reports allocated bytes for the indexer data, manager logs, and alert logs.
+The alert path is part of the manager logs path, so these numbers are not
+additive. Repeat on later days and compare the same fields; this does not
+configure retention, stop containers, or read alert contents. It requires the
+default `asp-wazuh` container names; use `--indexer` and `--manager` if yours
+differ. Platform SQLite backup sizes are measured separately with
+`python -m adaptive_security.storage_trend artifacts`.
+
 ## Stop and restart
 
 ```sh
