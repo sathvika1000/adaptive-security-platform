@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from adaptive_security.archive import create_archive, restore_archive, verify_archive
+from adaptive_security.archive import (
+    create_archive,
+    reconcile_archive,
+    restore_archive,
+    verify_archive,
+)
 from adaptive_security.backup import create_backup
 from adaptive_security.connectors.wazuh import WazuhConnector
 from adaptive_security.domain.detections import DetectionSignal
@@ -61,6 +66,29 @@ def test_archive_reconciles_only_older_unlinked_other_events(tmp_path: Path) -> 
     assert verify_archive(snapshot, archive) == result
     assert store.event("wazuh", "unlinked-other") is not None
 
+    current = tmp_path / "current.db"
+    create_backup(source, current)
+    matched = reconcile_archive(snapshot, archive, current)
+    assert matched["reconciled"]
+    assert matched["unchanged_eligible"] == 2
+    assert matched["missing"] == matched["changed_or_protected"] == 0
+    assert matched["newly_eligible"] == 0
+
+    with store.transaction() as conn:
+        conn.execute("UPDATE events SET incident_id = ? WHERE event_id = ?",
+                     ("inc-late", "unlinked-file"))
+    later_alert = _alert("later-other", 99, "grace")
+    later_alert["rule"] = {"id": "510", "level": 7, "groups": []}
+    service.ingest(connector.normalize(later_alert))
+    later = tmp_path / "later.db"
+    create_backup(source, later)
+    drift = reconcile_archive(snapshot, archive, later)
+    assert not drift["reconciled"]
+    assert drift["unchanged_eligible"] == 1
+    assert drift["changed_or_protected"] == 1
+    assert drift["newly_eligible"] == 1
+    assert store.event("wazuh", "unlinked-file") is not None
+
     restored = tmp_path / "restored.db"
     outcome = restore_archive(archive, restored)
     assert outcome["restored_events"] == 2
@@ -72,6 +100,14 @@ def test_archive_reconciles_only_older_unlinked_other_events(tmp_path: Path) -> 
     assert isolated.retention_preview(cutoff).unlinked_other == 2
     with pytest.raises(FileExistsError):
         restore_archive(archive, restored)
+
+    with store.transaction() as conn:
+        conn.execute("DELETE FROM events WHERE event_id = ?", ("unlinked-other",))
+    missing_backup = tmp_path / "missing.db"
+    create_backup(source, missing_backup)
+    missing = reconcile_archive(snapshot, archive, missing_backup)
+    assert missing["missing"] == 1
+    assert not missing["reconciled"]
 
     with archive.open("a") as stream:
         stream.write("{}\n")

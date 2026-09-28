@@ -56,6 +56,9 @@
 - Isolated archive restore verifies the manifest and event stream, then creates
   a new private SQLite database containing only exported events; it refuses
   existing destinations and does not modify the live store.
+- Read-only archive reconciliation compares a verified archive with a fresh
+  verified snapshot to expose relinked, changed, missing, and newly eligible
+  events before any retention decision.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
@@ -77,8 +80,10 @@
   the original Wazuh alerts remain the detailed source for those records.
 
 ## Next
-1. Define the retention window and deletion/reconciliation policy before any
-   event deletion; bound incident update work for long correlation runs.
+1. Choose a retention window and decide whether unlinked archived records
+   may ever be deleted. Require fresh backup, archive verification, and
+   zero-drift reconciliation before considering deletion. Bound incident
+   update work for long correlation runs.
 2. Identity-aware analyst actions before adding UI response controls.
 3. Run both signal evaluations on permissioned benign lookalikes and malicious
    samples before considering shadow signal promotion.

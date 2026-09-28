@@ -200,6 +200,57 @@ def restore_archive(archive: Path, destination: Path) -> dict[str, Any]:
         temporary.unlink(missing_ok=True)
 
 
+def reconcile_archive(snapshot: Path, archive: Path, current: Path) -> dict[str, Any]:
+    """Compare archived candidates with a newer verified snapshot, without changing either."""
+    archived = verify_archive(snapshot, archive)
+    current_manifest = verify_backup(current)
+    cutoff = archived["before"]
+    with closing(sqlite3.connect(current.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+        conn.execute("CREATE TEMP TABLE archived (source TEXT, event_id TEXT, body TEXT, "
+                     "PRIMARY KEY (source, event_id))")
+        with archive.open(encoding="utf-8") as stream:
+            for line in stream:
+                event = SecurityEvent.model_validate_json(line)
+                conn.execute("INSERT INTO archived VALUES (?, ?, ?)",
+                             (event.source, event.event_id, line[:-1]))
+        unchanged, missing = conn.execute(
+            """SELECT
+                COALESCE(SUM(CASE WHEN e.source IS NOT NULL AND e.body = a.body
+                    AND e.event_time < ? AND e.incident_id IS NULL
+                    AND e.correlation_key IS NULL AND NOT EXISTS (
+                        SELECT 1 FROM event_signals AS s
+                        WHERE s.source = e.source AND s.event_id = e.event_id
+                    ) THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN e.source IS NULL THEN 1 ELSE 0 END), 0)
+               FROM archived AS a LEFT JOIN events AS e
+                 ON e.source = a.source AND e.event_id = a.event_id""",
+            (cutoff,),
+        ).fetchone()
+        changed = archived["count"] - unchanged - missing
+        newly_eligible = conn.execute(
+            """SELECT COUNT(*) FROM events AS e
+               WHERE e.event_time < ? AND e.incident_id IS NULL
+                 AND e.correlation_key IS NULL
+                 AND NOT EXISTS (SELECT 1 FROM event_signals AS s
+                                 WHERE s.source = e.source AND s.event_id = e.event_id)
+                 AND NOT EXISTS (SELECT 1 FROM archived AS a
+                                 WHERE a.source = e.source AND a.event_id = e.event_id)""",
+            (cutoff,),
+        ).fetchone()[0]
+    return {
+        "before": cutoff,
+        "archived_events": archived["count"],
+        "unchanged_eligible": unchanged,
+        "missing": missing,
+        "changed_or_protected": changed,
+        "newly_eligible": newly_eligible,
+        "reconciled": (unchanged == archived["count"] and missing == 0
+                       and changed == 0 and newly_eligible == 0),
+        "source_backup_sha256": archived["source_backup_sha256"],
+        "current_backup_sha256": current_manifest["sha256"],
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -213,14 +264,20 @@ def main() -> None:
     restore = commands.add_parser("restore")
     restore.add_argument("archive", type=Path)
     restore.add_argument("destination", type=Path)
+    reconcile = commands.add_parser("reconcile")
+    reconcile.add_argument("snapshot", type=Path)
+    reconcile.add_argument("archive", type=Path)
+    reconcile.add_argument("current", type=Path)
     args = parser.parse_args()
     try:
         if args.command == "create":
             result = create_archive(args.snapshot, args.archive, args.before)
         elif args.command == "verify":
             result = verify_archive(args.snapshot, args.archive)
-        else:
+        elif args.command == "restore":
             result = restore_archive(args.archive, args.destination)
+        else:
+            result = reconcile_archive(args.snapshot, args.archive, args.current)
     except (OSError, sqlite3.Error, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f"Archive error: {error}\n")
     print(json.dumps(result, sort_keys=True))

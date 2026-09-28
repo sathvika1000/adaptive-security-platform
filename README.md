@@ -123,6 +123,7 @@ python -m adaptive_security.archive create SNAPSHOT.db older.jsonl \
   --before 2026-09-28T00:00:00Z
 python -m adaptive_security.archive verify SNAPSHOT.db older.jsonl
 python -m adaptive_security.archive restore older.jsonl recovered.db
+python -m adaptive_security.archive reconcile SNAPSHOT.db older.jsonl NEW_SNAPSHOT.db
 ```
 
 The command requires the source snapshot's `.manifest.json`. It writes a
@@ -145,6 +146,16 @@ which rows qualified for export: use `verify` with the source snapshot for
 that reconciliation. The restored database contains the archived events only,
 with no incidents, signals, baselines, or live platform state. Never use the
 live database path as a restore destination.
+
+`reconcile` verifies both complete snapshots and the original archive, then
+compares each archived event with a newer snapshot at the same cutoff. It
+reports unchanged eligible events, missing events, events whose body or
+incident/signal/correlation status changed, and newly eligible events absent
+from the original archive. `reconciled: true` means those counts match, not
+that deletion is safe or authorized. Run a new verified backup before this
+check; it reads snapshots only. Incident evidence, signal evidence, and
+correlatable events remain protected regardless of age. The retention window
+is still to be chosen, and no command deletes platform events.
 
 ## Incident workspace
 
