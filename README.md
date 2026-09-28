@@ -140,6 +140,18 @@ does not forecast long-term usage from a short interval. You can also pass
 individual `.db` paths. The report covers only platform SQLite backups, not
 Wazuh indexer or manager volumes.
 
+For the Docker Desktop Wazuh stack, measure the separate indexer data and
+manager logs without changing them:
+
+```sh
+python3 scripts/wazuh_storage.py
+```
+
+The output is a point-in-time count of allocated bytes inside the running
+containers. `manager_alerts_bytes` is included in `manager_logs_bytes`; do not
+add those figures together. Repeat on later days to observe Wazuh growth.
+Container names can be overridden with `--indexer` and `--manager`.
+
 ## Archive retention candidates
 
 From a verified platform database snapshot and its manifest, export the older
