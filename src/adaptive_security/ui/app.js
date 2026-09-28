@@ -42,6 +42,8 @@ async function read(path) {
 function resetDetail() {
   selected = null;
   revision += 1;
+  el("analyst-key").value = "";
+  el("close-form").hidden = true;
   el("detail").hidden = true;
   el("detail-empty").hidden = false;
 }
@@ -88,6 +90,8 @@ async function selectIncident(incident) {
   selected = incident;
   const current = ++revision;
   eventOffset = 0;
+  el("analyst-key").value = "";
+  el("close-form").hidden = incident.status !== "open";
   el("detail-empty").hidden = true;
   el("detail").hidden = false;
   el("selected-title").textContent = incident.title;
@@ -199,6 +203,41 @@ el("forget-key").addEventListener("click", () => {
   el("forget-key").hidden = true;
   notice("Key forgotten.");
   el("api-key").focus();
+});
+el("close-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const incident = selected;
+  if (!incident || incident.status !== "open") return;
+  const analystKey = el("analyst-key").value;
+  if (!window.confirm(`Close ${incident.incident_id}? Review its evidence before confirming.`)) return;
+  el("analyst-key").value = "";
+  const button = el("close-incident");
+  button.disabled = true;
+  const currentSession = session;
+  const currentRevision = revision;
+  try {
+    const response = await fetch(`/v1/incidents/${encodeURIComponent(incident.incident_id)}/close`, {
+      method: "POST",
+      headers: { "X-API-Key": apiKey, "X-Analyst-Key": analystKey },
+      cache: "no-store",
+      redirect: "error",
+    });
+    if (!response.ok) throw new Error(response.status === 401 ?
+      "Analyst key was rejected." : `Could not close incident (HTTP ${response.status}).`);
+    const updated = await response.json();
+    if (currentSession !== session) return;
+    await incidents(incidentOffset);
+    if (currentSession !== session) return;
+    if (currentRevision === revision && selected?.incident_id === incident.incident_id) {
+      await selectIncident(updated);
+    }
+    if (currentSession !== session) return;
+    notice(`Closed ${updated.incident_id}.`);
+  } catch (error) {
+    if (currentSession === session) showFailure(error);
+  } finally {
+    button.disabled = false;
+  }
 });
 el("refresh").addEventListener("click", async () => {
   try { await incidents(incidentOffset); } catch (error) { showFailure(error); }

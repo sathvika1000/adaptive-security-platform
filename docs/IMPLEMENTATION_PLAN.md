@@ -74,6 +74,8 @@
 - Read-only identity endpoint validates configured analyst credentials and
   reports the recognized actor or legacy shared mode without changing state.
 - Incident workspace history shows the analyst name on attributed actions.
+- Incident workspace allows a confirmed close of an open incident with a
+  per-request analyst key, clears that field, and refreshes visible history.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
