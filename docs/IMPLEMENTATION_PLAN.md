@@ -73,6 +73,7 @@
   with null actors while leaving the current shared-key mode available.
 - Read-only identity endpoint validates configured analyst credentials and
   reports the recognized actor or legacy shared mode without changing state.
+- Incident workspace history shows the analyst name on attributed actions.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.

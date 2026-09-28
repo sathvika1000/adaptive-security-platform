@@ -168,8 +168,9 @@ async function history(current) {
   for (const transition of page) {
     const context = transition.merged_into ? ` · Merged into ${transition.merged_into}` :
       transition.event_id ? ` · Trigger ${transition.event_source}/${transition.event_id}` : "";
+    const attribution = transition.actor ? ` · Analyst ${transition.actor}` : "";
     list.append(element("div", "history-item",
-      `${date(transition.occurred_at)} · ${transition.action}${context}`));
+      `${date(transition.occurred_at)} · ${transition.action}${attribution}${context}`));
   }
   if (page.length === 100) list.append(element("p", "empty-copy", "Showing the first 100 transitions."));
 }
