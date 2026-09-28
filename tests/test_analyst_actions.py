@@ -25,6 +25,14 @@ def test_analyst_keys_attribute_close_actions_and_survive_restart(tmp_path: Path
                            headers=headers).json()["incident"]
     close = f"/v1/incidents/{incident['incident_id']}/close"
     history = f"/v1/incidents/{incident['incident_id']}/history"
+    identity = "/v1/auth/identity"
+
+    assert client.get(identity).status_code == 401
+    assert client.get(identity, headers=headers).status_code == 401
+    assert client.get(identity, headers={**headers, "X-Analyst-Key": "wrong"})\
+        .status_code == 401
+    assert client.get(identity, headers={**headers, "X-Analyst-Key": configured["sathvika"]})\
+        .json() == {"mode": "analyst", "actor": "sathvika"}
 
     assert client.post(close, headers=headers).status_code == 401
     assert client.post(close, headers={**headers, "X-Analyst-Key": "wrong"}).status_code == 401
@@ -75,3 +83,10 @@ def test_analyst_keys_load_from_environment(
     url = f"/v1/incidents/{incident['incident_id']}/close"
     assert client.post(url, headers=headers).status_code == 401
     assert client.post(url, headers={**headers, "X-Analyst-Key": key}).status_code == 200
+
+
+def test_identity_reports_legacy_shared_mode_without_attributing_actor(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "events.db"), "shared", {}))
+    response = client.get("/v1/auth/identity", headers={"X-API-Key": "shared"})
+    assert response.status_code == 200
+    assert response.json() == {"mode": "shared", "actor": None}
