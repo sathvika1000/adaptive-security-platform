@@ -218,7 +218,8 @@ window is 90 days, and no command deletes platform events.
 
 Open `http://127.0.0.1:8000/ui` on the Docker Desktop host and enter the
 platform API key. The read-only page lists incidents, normalized event evidence,
-signals, and lifecycle transitions. It calls the same authenticated API; the
+signals, and lifecycle transitions, including the analyst name on attributed
+close actions. It calls the same authenticated API; the
 key stays only in page memory and is cleared when you leave or choose **Forget
 key**. It is never placed in a URL or browser storage. Keep the loopback bind
 and do not share the key. The page shows 20 incidents or events at a time and
