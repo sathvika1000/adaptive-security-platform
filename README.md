@@ -87,6 +87,20 @@ volume to reset the demonstration. No Wazuh server is bundled. For Docker
 Desktop and the official Wazuh single-node stack, follow
 [the Wazuh setup guide](docs/WAZUH_DOCKER_DESKTOP.md).
 
+## Back up the platform database
+
+Create a consistent SQLite snapshot while the API runs with
+`python -m adaptive_security.backup create SOURCE DESTINATION`. The command
+refuses to overwrite a destination and writes a 0600 database copy plus a
+`DESTINATION.manifest.json` containing SHA256, size, and table counts. Check a
+copy with `python -m adaptive_security.backup verify DESTINATION`; verification
+checks its digest, SQLite integrity, and counts. Keep both files together and
+store the copied database privately because it contains security evidence.
+For the Docker Desktop volume and host copy-out procedure, see
+[the Wazuh setup guide](docs/WAZUH_DOCKER_DESKTOP.md#back-up-the-platform-database).
+This is a full database snapshot, not a retention deletion or a backup of
+Wazuh's own volumes.
+
 ## Incident workspace
 
 Open `http://127.0.0.1:8000/ui` on the Docker Desktop host and enter the
