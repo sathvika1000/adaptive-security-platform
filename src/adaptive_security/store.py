@@ -255,7 +255,8 @@ class SQLiteStore:
 
     def save_incident(
         self, conn: sqlite3.Connection, incident: Incident,
-        events: list[SecurityEvent], retired_ids: set[str], trigger_event: SecurityEvent,
+        members: list[tuple[SecurityEvent, str | None]],
+        retired_ids: set[str], trigger_event: SecurityEvent,
     ) -> None:
         conn.execute(
             """INSERT INTO incidents (incident_id, body) VALUES (?, ?)
@@ -264,7 +265,10 @@ class SQLiteStore:
         )
         conn.executemany(
             "UPDATE events SET incident_id = ? WHERE source = ? AND event_id = ?",
-            [(incident.incident_id, event.source, event.event_id) for event in events],
+            [
+                (incident.incident_id, event.source, event.event_id)
+                for event, previous_id in members if previous_id != incident.incident_id
+            ],
         )
         for retired_id in sorted(retired_ids):
             conn.execute(

@@ -1,4 +1,6 @@
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -138,6 +140,57 @@ def test_connected_run_scans_indexed_neighbors_in_pages(tmp_path: Path) -> None:
         sql for sql in statements if "SELECT event_time, body, incident_id FROM events" in sql
     ]
     assert len(neighbor_queries) == 4
+
+
+def test_incident_growth_writes_only_changed_event_members(tmp_path: Path) -> None:
+    store = SQLiteStore(str(tmp_path / "events.db"))
+    service = IngestionService(store)
+    connector = WazuhConnector()
+    for minute in range(60):
+        service.ingest(connector.normalize(alert(f"event-{minute}", minute)))
+
+    statements: list[str] = []
+    original_transaction = store.transaction
+
+    @contextmanager
+    def traced_transaction() -> Iterator[sqlite3.Connection]:
+        with original_transaction() as conn:
+            conn.set_trace_callback(statements.append)
+            yield conn
+
+    with patch.object(store, "transaction", traced_transaction):
+        _, incident = service.ingest(connector.normalize(alert("append", 60)))
+
+    assert incident is not None and len(incident.event_ids) == 61
+    assignments = [sql for sql in statements if sql.startswith("UPDATE events SET incident_id")]
+    assert len(assignments) == 1
+    assert "append" in assignments[0]
+
+
+def test_bridge_reassigns_retired_incident_members(tmp_path: Path) -> None:
+    store = SQLiteStore(str(tmp_path / "merge.db"))
+    service = IngestionService(store)
+    connector = WazuhConnector()
+    for event_id, minute in (("a", 0), ("b", 5), ("c", 40), ("d", 45), ("bridge-1", 20)):
+        service.ingest(connector.normalize(alert(event_id, minute)))
+
+    statements: list[str] = []
+    original_transaction = store.transaction
+
+    @contextmanager
+    def traced_transaction() -> Iterator[sqlite3.Connection]:
+        with original_transaction() as conn:
+            conn.set_trace_callback(statements.append)
+            yield conn
+
+    with patch.object(store, "transaction", traced_transaction):
+        _, incident = service.ingest(connector.normalize(alert("bridge-2", 30)))
+    assert incident is not None
+    assignments = [sql for sql in statements if sql.startswith("UPDATE events SET incident_id")]
+    assert len(assignments) == 3
+    assert {event.event_id for event in store.incident_events(incident.incident_id) or []} == {
+        "a", "b", "bridge-1", "bridge-2", "c", "d"
+    }
 
 
 def test_retention_preview_partitions_old_events_without_deleting_evidence(
