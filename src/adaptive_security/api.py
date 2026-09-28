@@ -3,6 +3,7 @@ import json
 import logging
 import os
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from importlib.resources import files
 from time import perf_counter
 from typing import Annotated
@@ -27,6 +28,7 @@ class IngestionResult(BaseModel):
 
 
 logger = logging.getLogger("uvicorn.error")
+DEFAULT_RETENTION_DAYS = 90
 _UI_HEADERS = {
     "Cache-Control": "no-store",
     "Referrer-Policy": "no-referrer",
@@ -129,8 +131,17 @@ def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAP
         "/v1/storage/retention-preview", response_model=RetentionPreview,
         dependencies=[Depends(authorize)],
     )
-    def retention_preview(before: Annotated[AwareDatetime, Query()]) -> RetentionPreview:
-        return store.retention_preview(before)
+    def retention_preview(
+        before: Annotated[AwareDatetime | None, Query()] = None,
+        days: Annotated[int | None, Query(ge=1, le=3650)] = None,
+    ) -> RetentionPreview:
+        if before is not None and days is not None:
+            raise HTTPException(status_code=400, detail="Use either before or days")
+        if before is not None:
+            return store.retention_preview(before)
+        window_days = days if days is not None else DEFAULT_RETENTION_DAYS
+        cutoff = datetime.now(UTC) - timedelta(days=window_days)
+        return store.retention_preview(cutoff).model_copy(update={"window_days": window_days})
 
     @app.get(
         "/v1/incidents/{incident_id}", response_model=Incident, dependencies=[Depends(authorize)]

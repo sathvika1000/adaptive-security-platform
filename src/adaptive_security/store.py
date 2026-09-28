@@ -25,6 +25,7 @@ class RetentionRuleCount(BaseModel):
 
 class RetentionPreview(BaseModel):
     before: datetime
+    window_days: int | None = None
     total_events: int
     before_cutoff: int
     incident_evidence: int
