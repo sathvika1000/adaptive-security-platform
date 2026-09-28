@@ -53,6 +53,9 @@
 - Snapshot-based JSONL archive exports older unlinked, noncorrelatable,
   unsignaled events and reconciles each record with the verified backup;
   the live store remains untouched.
+- Isolated archive restore verifies the manifest and event stream, then creates
+  a new private SQLite database containing only exported events; it refuses
+  existing destinations and does not modify the live store.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
@@ -74,7 +77,7 @@
   the original Wazuh alerts remain the detailed source for those records.
 
 ## Next
-1. Define the retention window and restore/reconciliation policy before any
+1. Define the retention window and deletion/reconciliation policy before any
    event deletion; bound incident update work for long correlation runs.
 2. Identity-aware analyst actions before adding UI response controls.
 3. Run both signal evaluations on permissioned benign lookalikes and malicious
