@@ -113,6 +113,28 @@ runs. The command does not rotate or delete any backup.
 This is a full database snapshot, not a retention deletion or a backup of
 Wazuh's own volumes.
 
+## Archive retention candidates
+
+From a verified platform database snapshot and its manifest, export the older
+`unlinked_other` partition as canonical JSONL without changing the live store:
+
+```sh
+python -m adaptive_security.archive create SNAPSHOT.db older.jsonl \
+  --before 2026-09-28T00:00:00Z
+python -m adaptive_security.archive verify SNAPSHOT.db older.jsonl
+```
+
+The command requires the source snapshot's `.manifest.json`. It writes a
+private 0600 archive and `.manifest.json` with the cutoff, record count,
+digest, source backup digest, and classification version. Verification checks
+the source backup, archive digest, and every archived record against the
+snapshot's eligible rows. The exclusive UTC cutoff and partition match
+`/v1/storage/retention-preview`; archive output includes events of any category
+that lack an incident, correlation identity, and signal. This is a candidate
+inventory, not a safe-to-delete decision: older unlinked alerts may still
+matter to later investigation. Keep the full snapshot and archive together.
+No event deletion or automatic rotation is enabled.
+
 ## Incident workspace
 
 Open `http://127.0.0.1:8000/ui` on the Docker Desktop host and enter the
