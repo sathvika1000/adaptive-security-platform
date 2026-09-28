@@ -213,7 +213,7 @@ def reconcile_archive(snapshot: Path, archive: Path, current: Path) -> dict[str,
                 event = SecurityEvent.model_validate_json(line)
                 conn.execute("INSERT INTO archived VALUES (?, ?, ?)",
                              (event.source, event.event_id, line[:-1]))
-        unchanged, missing, changed = conn.execute(
+        unchanged, missing = conn.execute(
             """SELECT
                 COALESCE(SUM(CASE WHEN e.source IS NOT NULL AND e.body = a.body
                     AND e.event_time < ? AND e.incident_id IS NULL
@@ -221,17 +221,12 @@ def reconcile_archive(snapshot: Path, archive: Path, current: Path) -> dict[str,
                         SELECT 1 FROM event_signals AS s
                         WHERE s.source = e.source AND s.event_id = e.event_id
                     ) THEN 1 ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN e.source IS NULL THEN 1 ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN e.source IS NOT NULL AND NOT (
-                    e.body = a.body AND e.event_time < ? AND e.incident_id IS NULL
-                    AND e.correlation_key IS NULL AND NOT EXISTS (
-                        SELECT 1 FROM event_signals AS s
-                        WHERE s.source = e.source AND s.event_id = e.event_id
-                    )) THEN 1 ELSE 0 END), 0)
+                COALESCE(SUM(CASE WHEN e.source IS NULL THEN 1 ELSE 0 END), 0)
                FROM archived AS a LEFT JOIN events AS e
                  ON e.source = a.source AND e.event_id = a.event_id""",
-            (cutoff, cutoff),
+            (cutoff,),
         ).fetchone()
+        changed = archived["count"] - unchanged - missing
         newly_eligible = conn.execute(
             """SELECT COUNT(*) FROM events AS e
                WHERE e.event_time < ? AND e.incident_id IS NULL
