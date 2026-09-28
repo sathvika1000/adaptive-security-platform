@@ -121,6 +121,16 @@ snapshot in its named volume. Copy both snapshot files to the Mac before
 relying on the backup:
 
 ```sh
+python3 scripts/backup_docker.py
+```
+
+The command creates a snapshot, verifies it inside Docker, copies both files
+to a new private directory in ignored `artifacts/`, and verifies the host
+copy's digest, SQLite integrity, and table counts. Its last lines print the
+verified paths. It does not remove the original snapshot from the Docker
+volume or rotate earlier backups. A manually controlled equivalent is:
+
+```sh
 backup_name="security-$(date -u +%Y%m%dT%H%M%SZ).db"
 mkdir -p artifacts
 docker exec adaptive-security-platform-platform-1 \
