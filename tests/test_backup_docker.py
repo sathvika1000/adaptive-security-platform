@@ -1,12 +1,16 @@
 import shutil
 import subprocess
 from pathlib import Path
+from runpy import run_path
 
 import pytest
 
 from adaptive_security.backup import create_backup, verify_backup
 from adaptive_security.store import SQLiteStore
-from scripts.backup_docker import backup_docker, verify_host_copy
+
+script = run_path(str(Path(__file__).resolve().parents[1] / "scripts" / "backup_docker.py"))
+backup_docker = script["backup_docker"]
+verify_host_copy = script["verify_host_copy"]
 
 
 def test_docker_backup_publishes_verified_pair(
