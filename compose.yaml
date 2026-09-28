@@ -5,6 +5,7 @@ services:
       - "127.0.0.1:8000:8000"
     environment:
       ASP_API_KEY: ${ASP_API_KEY:?Set ASP_API_KEY before starting}
+      ASP_ANALYST_KEYS_JSON: ${ASP_ANALYST_KEYS_JSON:-}
       ASP_DB_PATH: /data/security.db
     volumes:
       - platform-data:/data
@@ -12,4 +13,3 @@ services:
 
 volumes:
   platform-data:
-
