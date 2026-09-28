@@ -53,6 +53,14 @@
           <p class="kicker">Investigation</p>
           <h2 id="selected-title"></h2>
           <p id="selected-meta" class="muted"></p>
+          <form id="close-form" class="close-form" autocomplete="off" hidden>
+            <label for="analyst-key">Analyst key</label>
+            <div class="access-controls">
+              <input id="analyst-key" type="password" autocomplete="off" spellcheck="false" required>
+              <button id="close-incident" type="submit" class="secondary">Close incident</button>
+            </div>
+            <p class="muted">Confirm the incident after reviewing its evidence. The key is cleared after the request.</p>
+          </form>
           <div id="selected-entities" class="tags"></div>
           <div id="selected-signals"></div>
           <div class="section-head timeline-head"><h3>Event timeline</h3><span id="event-count" class="muted"></span></div>
