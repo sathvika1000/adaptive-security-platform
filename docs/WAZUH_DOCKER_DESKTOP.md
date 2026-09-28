@@ -44,8 +44,9 @@ python3 scripts/replay_demo.py
 ```
 
 Keep this Terminal session or store the key in a local, ignored `.env` file;
-the same key must be supplied when starting the forwarder. `python3` is only
-used for the replay script; the container provides Python 3.12 for the app.
+the same key must be supplied when starting the forwarder. The container
+provides Python 3.12 for the app; host Python 3 is used for the replay and
+backup helper scripts.
 The API is at `http://127.0.0.1:8000` and `/ready` should return 200.
 
 ## 3. Start Wazuh's official single-node stack
@@ -119,6 +120,16 @@ inspect the actual alert fields and forwarder logs before changing rules.
 From the platform repository, keep the API running and create a SQLite
 snapshot in its named volume. Copy both snapshot files to the Mac before
 relying on the backup:
+
+```sh
+python3 scripts/backup_docker.py
+```
+
+The command creates a snapshot, verifies it inside Docker, copies both files
+to a new private directory in ignored `artifacts/`, and verifies the host
+copy's digest, SQLite integrity, and table counts. Its last lines print the
+verified paths. It does not remove the original snapshot from the Docker
+volume or rotate earlier backups. A manually controlled equivalent is:
 
 ```sh
 backup_name="security-$(date -u +%Y%m%dT%H%M%SZ).db"

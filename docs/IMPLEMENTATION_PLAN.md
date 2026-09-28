@@ -48,6 +48,8 @@
   metadata in canonical attributes while omitting remediation and raw commands.
 - Consistent SQLite backup and verification utility writes a private snapshot
   with SHA256, table counts, and integrity checks before retention work.
+- Host-side Docker backup command copies a snapshot and manifest into a private
+  directory only after verifying the host copy's digest, integrity, and counts.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
