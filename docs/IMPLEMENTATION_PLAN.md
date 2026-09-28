@@ -62,6 +62,9 @@
 - Authenticated retention preview defaults to a rolling 90-day window and
   accepts a bounded days override or an explicit timezone-aware cutoff;
   it reports the chosen window and leaves all stored evidence untouched.
+- Verified-backup storage trend reports observed platform event, incident,
+  and database-size changes across snapshots without touching the live store
+  or extrapolating from short observation windows.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
@@ -83,9 +86,9 @@
   the original Wazuh alerts remain the detailed source for those records.
 
 ## Next
-1. Observe storage growth under the provisional 90-day active and one-year
-   archive policy. Decide whether unlinked archived records may ever be
-   deleted; require fresh backup, archive verification, and zero-drift
+1. Measure platform and Wazuh storage growth under the provisional 90-day
+   active and one-year archive policy. Decide whether unlinked archived
+   records may ever be deleted; require fresh backup, archive verification, and zero-drift
    reconciliation first. Bound incident update work for long correlation runs.
 2. Identity-aware analyst actions before adding UI response controls.
 3. Run both signal evaluations on permissioned benign lookalikes and malicious
