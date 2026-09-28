@@ -76,6 +76,8 @@
 - Incident workspace history shows the analyst name on attributed actions.
 - Incident workspace allows a confirmed close of an open incident with a
   per-request analyst key, clears that field, and refreshes visible history.
+- Analyst keys can explicitly grant or withhold close permission while legacy
+  string keys retain that permission; identity reports the allowed action.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
@@ -102,9 +104,9 @@
    active and one-year archive policy. Decide whether unlinked archived
    records may ever be deleted; require fresh backup, archive verification, and zero-drift
    reconciliation first. Bound incident update work for long correlation runs.
-2. Evaluate stronger per-analyst authentication and action permissions before
-   adding further UI response controls; the analyst-key mode attributes close actions
-   but is optional and has no role management or revocation interface.
+2. Evaluate stronger per-analyst authentication and read/ingest permissions before
+   adding further UI response controls. The optional analyst keys govern close
+   actions only; there is no live role-management or revocation interface.
 3. Run both signal evaluations on permissioned benign lookalikes and malicious
    samples before considering shadow signal promotion.
 
