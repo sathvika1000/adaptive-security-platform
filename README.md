@@ -83,7 +83,7 @@ transitions in processing order. Close entries include the API request ID;
 in analyst-key mode, they also include the matching `actor` name. Existing
 close transitions and automated reopen/merge transitions have a null actor;
 previous actions cannot be attributed retrospectively. Analyst keys are not
-recorded in the database or request logs. The UI remains read-only. Reopen and
+recorded in the database or request logs. Reopen and
 merge entries name the triggering source and event ID. Merge entries
 also name the surviving ID. A retired incident alias retrieves the surviving
 incident's combined history while each entry retains the incident ID it had
@@ -333,7 +333,7 @@ through an old ID return the surviving incident with its current ID, including
 after subsequent merges. The incident list contains only current IDs. Aliases
 are created for merges after this upgrade; previously retired IDs cannot be
 reconstructed.
-The transition history cannot identify an individual analyst because this POC
-uses one shared API key. Event retention remains future work.
-Deploy behind TLS and network controls; the shared API key is a POC boundary,
-not a multi-user authorization system.
+Close transition history identifies an analyst when analyst-key mode is enabled;
+older and automated transitions have no actor. Event retention remains future
+work. Deploy behind TLS and network controls; the shared API key plus optional
+analyst keys are a POC boundary, not a multi-user authorization system.
