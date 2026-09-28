@@ -151,10 +151,12 @@ def test_retention_preview_partitions_old_events_without_deleting_evidence(
         alert("unlinked-auth", 100, user="carol"),
         alert("unlinked-file", 101, user="carol"),
         alert("shadow", 102, user="bob"),
+        alert("unlinked-other", 102, user="erin"),
         alert("at-cutoff", 103, user="dave"),
     ]
     payloads[3]["rule"]["groups"] = ["syscheck"]
     payloads[4]["rule"]["groups"] = ["authentication_success"]
+    payloads[5]["rule"] = {"id": "510", "level": 7, "groups": []}
     for payload in payloads:
         assert client.post("/v1/events/wazuh", json=payload, headers=headers).status_code == 200
 
@@ -165,7 +167,7 @@ def test_retention_preview_partitions_old_events_without_deleting_evidence(
             DetectionSignal(rule_id="shadow", rule_version=1, title="Signal",
                             evidence_event_ids=("shadow",), priority=4, mode="shadow"),
         )
-    cutoff = payloads[5]["timestamp"]
+    cutoff = payloads[6]["timestamp"]
     url = "/v1/storage/retention-preview"
     assert client.get(url, params={"before": cutoff}).status_code == 401
     assert client.get(url, params={"before": "2026-09-27T03:43:00"},
@@ -176,9 +178,13 @@ def test_retention_preview_partitions_old_events_without_deleting_evidence(
         "total_events", "before_cutoff", "incident_evidence", "signal_evidence",
         "unlinked_correlatable", "unlinked_other",
     )} == {
-        "total_events": 6, "before_cutoff": 5, "incident_evidence": 2,
-        "signal_evidence": 1, "unlinked_correlatable": 1, "unlinked_other": 1,
+        "total_events": 7, "before_cutoff": 6, "incident_evidence": 2,
+        "signal_evidence": 1, "unlinked_correlatable": 1, "unlinked_other": 2,
     }
+    assert summary.json()["unlinked_other_top_rules"] == [
+        {"source": "wazuh", "category": "file", "rule_id": "5710", "count": 1},
+        {"source": "wazuh", "category": "other", "rule_id": "510", "count": 1},
+    ]
     assert client.get("/v1/events/wazuh/unlinked-file", headers=headers).status_code == 200
 
 

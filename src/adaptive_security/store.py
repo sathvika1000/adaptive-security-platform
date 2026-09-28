@@ -15,6 +15,13 @@ from adaptive_security.domain.incidents import Incident, IncidentStatus, Inciden
 NEIGHBOR_PAGE_SIZE = 128
 
 
+class RetentionRuleCount(BaseModel):
+    source: str
+    category: str
+    rule_id: str | None
+    count: int
+
+
 class RetentionPreview(BaseModel):
     before: datetime
     total_events: int
@@ -23,6 +30,7 @@ class RetentionPreview(BaseModel):
     signal_evidence: int
     unlinked_correlatable: int
     unlinked_other: int
+    unlinked_other_top_rules: list[RetentionRuleCount]
 
 
 def correlation_key(event: SecurityEvent) -> str | None:
@@ -358,10 +366,31 @@ class SQLiteStore:
                    FROM events AS e WHERE e.event_time < ?""",
                 (cutoff,),
             ).fetchone()
+            rules = conn.execute(
+                """SELECT e.source, json_extract(e.body, '$.category') AS category,
+                          json_extract(e.body, '$.attributes.rule_id') AS rule_id,
+                          COUNT(*) AS event_count
+                   FROM events AS e
+                   WHERE e.event_time < ? AND e.incident_id IS NULL
+                     AND e.correlation_key IS NULL
+                     AND NOT EXISTS (
+                         SELECT 1 FROM event_signals AS s
+                         WHERE s.source = e.source AND s.event_id = e.event_id
+                     )
+                   GROUP BY e.source, category, rule_id
+                   ORDER BY event_count DESC, e.source, category, rule_id
+                   LIMIT 20""",
+                (cutoff,),
+            ).fetchall()
         return RetentionPreview(
             before=before, total_events=total, before_cutoff=row[0],
             incident_evidence=row[1] or 0, signal_evidence=row[2] or 0,
             unlinked_correlatable=row[3] or 0, unlinked_other=row[4] or 0,
+            unlinked_other_top_rules=[
+                RetentionRuleCount(source=source, category=category, rule_id=rule_id,
+                                   count=count)
+                for source, category, rule_id, count in rules
+            ],
         )
 
     def incident(self, incident_id: str) -> Incident | None:
