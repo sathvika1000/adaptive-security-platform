@@ -142,6 +142,37 @@ def test_connected_run_scans_indexed_neighbors_in_pages(tmp_path: Path) -> None:
     assert len(neighbor_queries) == 4
 
 
+def test_signal_lookup_batches_long_runs_and_preserves_event_order(tmp_path: Path) -> None:
+    store = SQLiteStore(str(tmp_path / "signals.db"))
+    connector = WazuhConnector()
+    events = [connector.normalize(alert(f"event-{index}", index)) for index in range(300)]
+    other = events[127].model_copy(update={"source": "other"})
+    with store.transaction() as conn:
+        for event in events:
+            store.put_event(conn, event)
+        store.put_event(conn, other)
+        for event in (events[0], events[127], events[128], events[299], other):
+            store.save_event_signal(
+                conn, event, DetectionSignal(
+                    rule_id="test", rule_version=1, title=f"{event.source} {event.event_id}",
+                    evidence_event_ids=(event.event_id,), priority=4, mode="shadow",
+                ),
+            )
+        statements: list[str] = []
+        conn.set_trace_callback(statements.append)
+        signals = store.signals_for_events(conn, [*events[:128], other, *events[128:]])
+        empty = store.signals_for_events(conn, [])
+        conn.set_trace_callback(None)
+
+    assert empty == ()
+    assert [signal.title for signal in signals] == [
+        "wazuh event-0", "wazuh event-127", "other event-127",
+        "wazuh event-128", "wazuh event-299",
+    ]
+    queries = [sql for sql in statements if "FROM event_signals WHERE" in sql]
+    assert len(queries) == 3
+
+
 def test_incident_growth_writes_only_changed_event_members(tmp_path: Path) -> None:
     store = SQLiteStore(str(tmp_path / "events.db"))
     service = IngestionService(store)

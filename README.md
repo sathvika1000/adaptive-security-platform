@@ -184,7 +184,9 @@ correlation run, then updates that run while preserving the ID of a matching
 incident as it grows or late events arrive. A long uninterrupted run still
 requires reading all of its members and rebuilding its incident. Event row
 assignments are written only for new or reassigned members, so ordinary
-incident growth does not rewrite every existing event row. Existing
+incident growth does not rewrite every existing event row. Persisted signal
+lookups use batches of 128 event identities while keeping signal order aligned
+with the incident timeline. Existing
 SQLite databases are migrated on startup without discarding incidents or status.
 If a late alert bridges two incidents, the older incident ID survives and the
 other ID is retired. High-volume retention and partitioning are future work.
