@@ -50,6 +50,9 @@
   with SHA256, table counts, and integrity checks before retention work.
 - Host-side Docker backup command copies a snapshot and manifest into a private
   directory only after verifying the host copy's digest, integrity, and counts.
+- Snapshot-based JSONL archive exports older unlinked, noncorrelatable,
+  unsignaled events and reconciles each record with the verified backup;
+  the live store remains untouched.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
@@ -71,8 +74,8 @@
   the original Wazuh alerts remain the detailed source for those records.
 
 ## Next
-1. Define retention policy and selective archival guarantees before deleting events;
-   bound incident update work for long correlation runs.
+1. Define the retention window and restore/reconciliation policy before any
+   event deletion; bound incident update work for long correlation runs.
 2. Identity-aware analyst actions before adding UI response controls.
 3. Run both signal evaluations on permissioned benign lookalikes and malicious
    samples before considering shadow signal promotion.
