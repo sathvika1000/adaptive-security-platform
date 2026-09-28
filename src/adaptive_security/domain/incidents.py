@@ -34,6 +34,7 @@ class IncidentTransition(BaseModel):
     action: Literal["closed", "reopened", "merged"]
     occurred_at: AwareDatetime
     request_id: str | None = None
+    actor: str | None = None
     event_source: str | None = None
     event_id: str | None = None
     merged_into: str | None = None
