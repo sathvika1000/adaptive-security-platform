@@ -71,6 +71,8 @@
 - Optional analyst-key mode requires a separate key for incident close actions,
   records the matched actor in durable history, and migrates existing history
   with null actors while leaving the current shared-key mode available.
+- Read-only identity endpoint validates configured analyst credentials and
+  reports the recognized actor or legacy shared mode without changing state.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
