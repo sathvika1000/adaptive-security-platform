@@ -5,12 +5,24 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
+from pydantic import BaseModel
+
 from adaptive_security.correlation.policy import WINDOW, identity
 from adaptive_security.domain.detections import DetectionSignal
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentStatus, IncidentTransition
 
 NEIGHBOR_PAGE_SIZE = 128
+
+
+class RetentionPreview(BaseModel):
+    before: datetime
+    total_events: int
+    before_cutoff: int
+    incident_evidence: int
+    signal_evidence: int
+    unlinked_correlatable: int
+    unlinked_other: int
 
 
 def correlation_key(event: SecurityEvent) -> str | None:
@@ -320,6 +332,37 @@ class SQLiteStore:
                 (source, event_id),
             ).fetchone()
         return SecurityEvent.model_validate_json(row[0]) if row else None
+
+    def retention_preview(self, before: datetime) -> RetentionPreview:
+        cutoff = before.astimezone(UTC).isoformat()
+        with self.transaction() as conn:
+            total = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+            row = conn.execute(
+                """SELECT
+                    COUNT(*),
+                    SUM(CASE WHEN e.incident_id IS NOT NULL THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN e.incident_id IS NULL AND EXISTS (
+                        SELECT 1 FROM event_signals AS s
+                        WHERE s.source = e.source AND s.event_id = e.event_id
+                    ) THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN e.incident_id IS NULL AND e.correlation_key IS NOT NULL
+                        AND NOT EXISTS (
+                            SELECT 1 FROM event_signals AS s
+                            WHERE s.source = e.source AND s.event_id = e.event_id
+                        ) THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN e.incident_id IS NULL AND e.correlation_key IS NULL
+                        AND NOT EXISTS (
+                            SELECT 1 FROM event_signals AS s
+                            WHERE s.source = e.source AND s.event_id = e.event_id
+                        ) THEN 1 ELSE 0 END)
+                   FROM events AS e WHERE e.event_time < ?""",
+                (cutoff,),
+            ).fetchone()
+        return RetentionPreview(
+            before=before, total_events=total, before_cutoff=row[0],
+            incident_evidence=row[1] or 0, signal_evidence=row[2] or 0,
+            unlinked_correlatable=row[3] or 0, unlinked_other=row[4] or 0,
+        )
 
     def incident(self, incident_id: str) -> Incident | None:
         with self.transaction() as conn:

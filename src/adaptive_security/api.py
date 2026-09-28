@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel
 from starlette.responses import Response
 
 from adaptive_security.connectors.wazuh import WazuhAlert, WazuhConnector
@@ -18,7 +18,7 @@ from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentTransition
 from adaptive_security.http import AlertBodyLimit
 from adaptive_security.service import IngestionService
-from adaptive_security.store import SQLiteStore
+from adaptive_security.store import RetentionPreview, SQLiteStore
 
 
 class IngestionResult(BaseModel):
@@ -124,6 +124,13 @@ def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAP
         offset: Annotated[int, Query(ge=0)] = 0,
     ) -> list[Incident]:
         return store.incidents_page(limit, offset)
+
+    @app.get(
+        "/v1/storage/retention-preview", response_model=RetentionPreview,
+        dependencies=[Depends(authorize)],
+    )
+    def retention_preview(before: Annotated[AwareDatetime, Query()]) -> RetentionPreview:
+        return store.retention_preview(before)
 
     @app.get(
         "/v1/incidents/{incident_id}", response_model=Incident, dependencies=[Depends(authorize)]
