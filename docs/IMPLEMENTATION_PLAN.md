@@ -37,6 +37,8 @@
   evidence, unlinked correlatable activity, and other unlinked events without
   modifying stored records; its top-rule breakdown helps inspect the unlinked
   remainder before choosing a policy.
+- Newly ingested Wazuh SCA alerts retain bounded policy, check, and summary
+  metadata in canonical attributes while omitting remediation and raw commands.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
@@ -53,6 +55,8 @@
 - The Apple Silicon Mac agent is enrolled and Active; a real rootcheck alert from
   agent 001 reached the API. Authentication correlation was tested with
   manager-decoded synthetic SSH logs, not a real login sequence.
+- Older SCA events do not gain check metadata retrospectively on upgrade;
+  the original Wazuh alerts remain the detailed source for those records.
 
 ## Next
 1. Define retention policy and archival guarantees before deleting events;

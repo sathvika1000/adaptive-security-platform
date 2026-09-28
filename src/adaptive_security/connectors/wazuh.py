@@ -45,6 +45,27 @@ _CATEGORY_BY_GROUP = {
 }
 
 
+def _sca_metadata(value: object) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    def copy_fields(source: dict[str, Any], names: tuple[str, ...], limit: int) -> dict[str, str]:
+        return {
+            name: str(item)[:limit]
+            for name in names
+            if isinstance((item := source.get(name)), (str, int)) and not isinstance(item, bool)
+        }
+
+    metadata: dict[str, Any] = copy_fields(
+        value, ("type", "policy", "policy_id", "scan_id"), 256
+    )
+    check = value.get("check")
+    if isinstance(check, dict):
+        metadata["check"] = copy_fields(check, ("id", "title", "result", "status"), 256)
+    metadata.update(copy_fields(value, ("score", "passed", "failed", "invalid"), 64))
+    return metadata
+
+
 class WazuhConnector:
     def normalize(self, payload: dict[str, Any]) -> SecurityEvent:
         alert = WazuhAlert.model_validate(payload)
@@ -84,6 +105,11 @@ class WazuhConnector:
         elif "authentication_success" in groups:
             outcome = "success"
 
+        attributes: dict[str, Any] = {"rule_id": str(alert.rule.id), "groups": sorted(groups)}
+        sca = _sca_metadata(alert.data.get("sca"))
+        if sca:
+            attributes["sca"] = sca
+
         return SecurityEvent(
             event_id=alert.id,
             source="wazuh",
@@ -94,5 +120,5 @@ class WazuhConnector:
             source_ip=source_ip,
             severity=min(alert.rule.level, 10),
             entities=tuple(entities),
-            attributes={"rule_id": str(alert.rule.id), "groups": sorted(groups)},
+            attributes=attributes,
         )
