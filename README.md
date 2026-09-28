@@ -72,10 +72,26 @@ control. Once configured, close requests require both the normal `X-API-Key`
 and an `X-Analyst-Key` matching one configured analyst. Invalid or missing
 analyst keys return 401 without closing the incident. Without this mode, the
 existing shared-key close flow continues with no actor attribution.
+String entries retain `close` permission for compatibility. To restrict an
+analyst key, use an object with exactly `key` and `permissions`, where the
+permissions list is either `["close"]` or `[]`:
+
+```json
+{"sathvika":{"key":"<64-character-random-key>","permissions":["close"]},
+ "reviewer":{"key":"<another-random-key>","permissions":[]}}
+```
+
+A valid key with no close permission receives 403 and leaves the incident
+open. Unknown permissions or malformed entries fail startup. Update the
+private configuration and recreate the platform container to change or
+remove a key; the platform does not offer a live role-management interface.
+The shared platform API key continues to allow reading and ingestion, so
+these permissions govern only the close action, not data access.
 `GET /v1/auth/identity` checks the same keys without changing an incident.
 With analyst mode enabled it requires both headers and returns
-`{"mode":"analyst","actor":"<configured name>"}`. In shared mode it accepts
-the platform API key and returns `{"mode":"shared","actor":null}`. It never
+`{"mode":"analyst","actor":"<configured name>","permissions":["close"]}`
+or an empty permissions list. In shared mode it accepts the platform API key
+and returns `{"mode":"shared","actor":null,"permissions":["close"]}`. It never
 returns a key. Use this endpoint to check which mode is active before
 offering an analyst action.
 `GET /v1/incidents/{incident_id}/history` returns durable close/reopen/merge
