@@ -122,6 +122,7 @@ From a verified platform database snapshot and its manifest, export the older
 python -m adaptive_security.archive create SNAPSHOT.db older.jsonl \
   --before 2026-09-28T00:00:00Z
 python -m adaptive_security.archive verify SNAPSHOT.db older.jsonl
+python -m adaptive_security.archive restore older.jsonl recovered.db
 ```
 
 The command requires the source snapshot's `.manifest.json`. It writes a
@@ -134,6 +135,16 @@ that lack an incident, correlation identity, and signal. This is a candidate
 inventory, not a safe-to-delete decision: older unlinked alerts may still
 matter to later investigation. Keep the full snapshot and archive together.
 No event deletion or automatic rotation is enabled.
+
+`restore` creates a separate 0600 SQLite database at a path that must not
+already exist. It checks the archive digest, record count, canonical event
+shape, order, and exclusive cutoff before publishing the restored database.
+It needs only the JSONL and its manifest, so it can recover the exported
+events if the source snapshot is unavailable. It cannot independently prove
+which rows qualified for export: use `verify` with the source snapshot for
+that reconciliation. The restored database contains the archived events only,
+with no incidents, signals, baselines, or live platform state. Never use the
+live database path as a restore destination.
 
 ## Incident workspace
 

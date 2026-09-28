@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from adaptive_security.backup import verify_backup
+from adaptive_security.domain.events import SecurityEvent
+from adaptive_security.store import SQLiteStore
 
 CLASSIFICATION = "unlinked_other_v1"
 
@@ -132,6 +134,72 @@ def verify_archive(snapshot: Path, archive: Path) -> dict[str, Any]:
     return manifest
 
 
+def _standalone_manifest(archive: Path) -> tuple[dict[str, Any], datetime]:
+    with _manifest_path(archive).open(encoding="utf-8") as stream:
+        manifest: dict[str, Any] = json.load(stream)
+    if (manifest.get("format_version") != 1 or
+            manifest.get("classification") != CLASSIFICATION or
+            manifest.get("archive_file") != archive.name or
+            not isinstance(manifest.get("count"), int) or
+            isinstance(manifest.get("count"), bool) or manifest["count"] < 0 or
+            not isinstance(manifest.get("source_backup_sha256"), str) or
+            len(manifest["source_backup_sha256"]) != 64):
+        raise ValueError("unsupported archive manifest")
+    cutoff = datetime.fromisoformat(manifest["before"])
+    if _before(cutoff) != manifest["before"]:
+        raise ValueError("archive cutoff is not canonical UTC")
+    if _digest(archive) != manifest.get("sha256"):
+        raise ValueError("archive SHA256 does not match the manifest")
+    return manifest, cutoff
+
+
+def restore_archive(archive: Path, destination: Path) -> dict[str, Any]:
+    """Restore verified archive bytes to a new, isolated SQLite database."""
+    archive = archive.absolute()
+    destination = destination.absolute()
+    if destination.exists() or destination.is_symlink():
+        raise FileExistsError("restore destination already exists")
+    if not destination.parent.is_dir():
+        raise FileNotFoundError("restore destination directory does not exist")
+    manifest, cutoff = _standalone_manifest(archive)
+    descriptor, name = tempfile.mkstemp(prefix=f".{destination.name}.", dir=destination.parent)
+    temporary = Path(name)
+    os.close(descriptor)
+    try:
+        store = SQLiteStore(str(temporary))
+        count = 0
+        previous: tuple[str, str, str] | None = None
+        with store.transaction() as conn, archive.open("r", encoding="utf-8") as stream:
+            for line in stream:
+                if not line.endswith("\n"):
+                    raise ValueError("archive record is not newline terminated")
+                body = line[:-1]
+                event = SecurityEvent.model_validate_json(body)
+                event_time = event.event_time.astimezone(UTC)
+                key = (event_time.isoformat(), event.source, event.event_id)
+                if event_time >= cutoff or (previous is not None and key <= previous):
+                    raise ValueError("archive records are out of order or beyond the cutoff")
+                conn.execute(
+                    """INSERT INTO events (source, event_id, body, event_time)
+                       VALUES (?, ?, ?, ?)""",
+                    (event.source, event.event_id, body, key[0]),
+                )
+                previous = key
+                count += 1
+            if count != manifest["count"]:
+                raise ValueError("archive record count does not match the manifest")
+        with closing(sqlite3.connect(temporary)) as conn:
+            if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise ValueError("restored database integrity check failed")
+        if destination.exists() or destination.is_symlink():
+            raise FileExistsError("restore destination already exists")
+        os.link(temporary, destination)
+        return {"destination": str(destination), "restored_events": count,
+                "archive_sha256": manifest["sha256"]}
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -142,10 +210,17 @@ def main() -> None:
     verify = commands.add_parser("verify")
     verify.add_argument("snapshot", type=Path)
     verify.add_argument("archive", type=Path)
+    restore = commands.add_parser("restore")
+    restore.add_argument("archive", type=Path)
+    restore.add_argument("destination", type=Path)
     args = parser.parse_args()
     try:
-        result = (create_archive(args.snapshot, args.archive, args.before)
-                  if args.command == "create" else verify_archive(args.snapshot, args.archive))
+        if args.command == "create":
+            result = create_archive(args.snapshot, args.archive, args.before)
+        elif args.command == "verify":
+            result = verify_archive(args.snapshot, args.archive)
+        else:
+            result = restore_archive(args.archive, args.destination)
     except (OSError, sqlite3.Error, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f"Archive error: {error}\n")
     print(json.dumps(result, sort_keys=True))
