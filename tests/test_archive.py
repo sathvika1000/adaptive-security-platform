@@ -1,10 +1,11 @@
+import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-from adaptive_security.archive import create_archive, verify_archive
+from adaptive_security.archive import create_archive, restore_archive, verify_archive
 from adaptive_security.backup import create_backup
 from adaptive_security.connectors.wazuh import WazuhConnector
 from adaptive_security.domain.detections import DetectionSignal
@@ -60,10 +61,25 @@ def test_archive_reconciles_only_older_unlinked_other_events(tmp_path: Path) -> 
     assert verify_archive(snapshot, archive) == result
     assert store.event("wazuh", "unlinked-other") is not None
 
+    restored = tmp_path / "restored.db"
+    outcome = restore_archive(archive, restored)
+    assert outcome["restored_events"] == 2
+    assert restored.stat().st_mode & 0o777 == 0o600
+    isolated = SQLiteStore(str(restored))
+    assert isolated.event("wazuh", "unlinked-file") == store.event("wazuh", "unlinked-file")
+    assert isolated.event("wazuh", "unlinked-other") == store.event("wazuh", "unlinked-other")
+    assert isolated.event("wazuh", "incident-a") is None
+    assert isolated.retention_preview(cutoff).unlinked_other == 2
+    with pytest.raises(FileExistsError):
+        restore_archive(archive, restored)
+
     with archive.open("a") as stream:
         stream.write("{}\n")
     with pytest.raises(ValueError, match="SHA256"):
         verify_archive(snapshot, archive)
+    with pytest.raises(ValueError, match="SHA256"):
+        restore_archive(archive, tmp_path / "bad.db")
+    assert not (tmp_path / "bad.db").exists()
 
 
 def test_archive_rejects_bad_source_and_naive_cutoff(tmp_path: Path) -> None:
@@ -82,3 +98,23 @@ def test_archive_rejects_bad_source_and_naive_cutoff(tmp_path: Path) -> None:
         stream.write(b"tampered")
     with pytest.raises(ValueError, match="SHA256"):
         verify_archive(snapshot, archive)
+    # A valid archive can still be inspected in isolation after the source is lost.
+    assert restore_archive(archive, tmp_path / "recovered.db")["restored_events"] == 0
+
+
+def test_restore_rejects_invalid_event_and_leaves_no_destination(tmp_path: Path) -> None:
+    source = tmp_path / "live.db"
+    SQLiteStore(str(source))
+    snapshot = tmp_path / "snapshot.db"
+    create_backup(source, snapshot)
+    archive = tmp_path / "older.jsonl"
+    create_archive(snapshot, archive, datetime(2026, 9, 28, tzinfo=UTC))
+    archive.write_text("{}\n")
+    manifest_path = tmp_path / "older.jsonl.manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["sha256"] = hashlib.sha256(archive.read_bytes()).hexdigest()
+    manifest["count"] = 1
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError):
+        restore_archive(archive, tmp_path / "invalid.db")
+    assert not (tmp_path / "invalid.db").exists()
