@@ -44,8 +44,9 @@ python3 scripts/replay_demo.py
 ```
 
 Keep this Terminal session or store the key in a local, ignored `.env` file;
-the same key must be supplied when starting the forwarder. `python3` is only
-used for the replay script; the container provides Python 3.12 for the app.
+the same key must be supplied when starting the forwarder. The container
+provides Python 3.12 for the app; host Python 3 is used for the replay and
+backup helper scripts.
 The API is at `http://127.0.0.1:8000` and `/ready` should return 200.
 
 ## 3. Start Wazuh's official single-node stack
