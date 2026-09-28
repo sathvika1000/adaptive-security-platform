@@ -57,7 +57,7 @@ class IngestionService:
                     update={"incident_id": oldest.incident_id, "status": status}
                 )
             self.store.save_incident(
-                conn, incident, events, old_ids - {incident.incident_id}, persisted
+                conn, incident, segment, old_ids - {incident.incident_id}, persisted
             )
             if (
                 previous and oldest.status is IncidentStatus.CLOSED
