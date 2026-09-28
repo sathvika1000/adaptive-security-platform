@@ -208,6 +208,33 @@ class SQLiteStore:
 
         return [*reversed(neighbors(True)), (event, None), *neighbors(False)]
 
+    def tail_incident(self, conn: sqlite3.Connection, event: SecurityEvent) -> Incident | None:
+        encoded = correlation_key(event)
+        if encoded is None:
+            return None
+        position = (encoded, event.event_time.astimezone(UTC).isoformat(),
+                    event.source, event.event_id)
+        before = conn.execute(
+            """SELECT event_time, incident_id FROM events
+               WHERE correlation_key = ? AND (event_time, source, event_id) < (?, ?, ?)
+               ORDER BY event_time DESC, source DESC, event_id DESC LIMIT 1""",
+            position,
+        ).fetchone()
+        if before is None or before[1] is None:
+            return None
+        if event.event_time - datetime.fromisoformat(before[0]) > WINDOW:
+            return None
+        after = conn.execute(
+            """SELECT event_time FROM events
+               WHERE correlation_key = ? AND (event_time, source, event_id) > (?, ?, ?)
+               ORDER BY event_time, source, event_id LIMIT 1""",
+            position,
+        ).fetchone()
+        if after is not None and datetime.fromisoformat(after[0]) - event.event_time <= WINDOW:
+            return None
+        incident = self.stored_incident(conn, before[1])
+        return incident if incident and incident.last_seen <= event.event_time else None
+
     def source_baseline(
         self, conn: sqlite3.Connection, key: str
     ) -> tuple[int, set[str]]:

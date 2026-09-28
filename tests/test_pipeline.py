@@ -198,6 +198,52 @@ def test_incident_growth_writes_only_changed_event_members(tmp_path: Path) -> No
     assert "append" in assignments[0]
 
 
+def test_failed_tail_append_reuses_incident_and_matches_full_rebuild(tmp_path: Path) -> None:
+    connector = WazuhConnector()
+    stores = [SQLiteStore(str(tmp_path / f"{name}.db")) for name in ("fast", "full")]
+    services = [IngestionService(store) for store in stores]
+    for service in services:
+        for minute in range(60):
+            service.ingest(connector.normalize(alert(f"failure-{minute}", minute)))
+        success = alert("success", 60)
+        success["rule"]["groups"] = ["authentication_success"]
+        service.ingest(connector.normalize(success))
+        old = service.store.incidents()[0]
+        assert len(old.signals) == 1
+        service.store.close_incident(old.incident_id, request_id="close-request")
+
+    append = connector.normalize(alert("tail", 61, host="web-01"))
+    with patch.object(stores[0], "connected_events", side_effect=AssertionError("full scan")):
+        with patch.object(SecurityEvent, "model_validate_json",
+                          wraps=SecurityEvent.model_validate_json) as decode:
+            _, fast = services[0].ingest(append)
+        assert decode.call_count == 0
+    with patch.object(stores[1], "tail_incident", return_value=None):
+        _, full = services[1].ingest(append)
+
+    assert fast == full
+    assert fast is not None and fast.status.value == "open"
+    assert len(fast.signals) == 1
+    assert [event.event_id for event in stores[0].incident_events(fast.incident_id) or []] == [
+        event.event_id for event in stores[1].incident_events(full.incident_id) or []
+    ]
+    assert [item.action for item in stores[0].incident_history(fast.incident_id) or []] == [
+        "closed", "reopened"
+    ]
+
+
+def test_late_failure_uses_full_rebuild_for_timeline_order(tmp_path: Path) -> None:
+    store = SQLiteStore(str(tmp_path / "late.db"))
+    service = IngestionService(store)
+    connector = WazuhConnector()
+    for event_id, minute in (("first", 0), ("last", 10)):
+        service.ingest(connector.normalize(alert(event_id, minute)))
+    with patch.object(store, "connected_events", wraps=store.connected_events) as scan:
+        _, incident = service.ingest(connector.normalize(alert("middle", 5)))
+    assert scan.call_count == 1
+    assert incident is not None and incident.event_ids == ("first", "middle", "last")
+
+
 def test_bridge_reassigns_retired_incident_members(tmp_path: Path) -> None:
     store = SQLiteStore(str(tmp_path / "merge.db"))
     service = IngestionService(store)

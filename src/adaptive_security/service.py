@@ -30,6 +30,32 @@ class IngestionService:
                     self.store.save_event_signal(conn, persisted, signal)
                 self.store.save_source_baseline(conn, encoded_key, count + 1,
                                                 ips | {persisted.source_ip})
+            if persisted.outcome == "failure":
+                previous_tail = self.store.tail_incident(conn, persisted)
+                if previous_tail is not None:
+                    entities = list(previous_tail.entities)
+                    seen = {(entity.type, entity.value) for entity in entities}
+                    for entity in persisted.entities:
+                        if (entity.type, entity.value) not in seen:
+                            entities.append(entity)
+                            seen.add((entity.type, entity.value))
+                    reopened = (
+                        previous_tail.status is IncidentStatus.CLOSED
+                        and persisted.event_time > previous_tail.last_seen
+                    )
+                    incident = previous_tail.model_copy(update={
+                        "last_seen": persisted.event_time,
+                        "severity": max(previous_tail.severity, persisted.severity),
+                        "event_ids": (*previous_tail.event_ids, persisted.event_id),
+                        "entities": tuple(entities),
+                        "status": IncidentStatus.OPEN if reopened else previous_tail.status,
+                    })
+                    self.store.save_incident(conn, incident, [(persisted, None)], set(), persisted)
+                    if reopened:
+                        self.store.record_transition(
+                            conn, incident.incident_id, "reopened", event=persisted
+                        )
+                    return persisted, incident
             segment = self.store.connected_events(conn, persisted)
             events = [candidate for candidate, _ in segment]
             if len(events) < 2 or not any(candidate.outcome == "failure" for candidate in events):
