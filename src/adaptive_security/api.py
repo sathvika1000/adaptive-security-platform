@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from importlib.resources import files
 from time import perf_counter
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -27,6 +27,11 @@ from adaptive_security.store import RetentionPreview, SQLiteStore
 class IngestionResult(BaseModel):
     event: SecurityEvent
     incident: Incident | None
+
+
+class AnalystIdentity(BaseModel):
+    mode: Literal["shared", "analyst"]
+    actor: str | None
 
 
 logger = logging.getLogger("uvicorn.error")
@@ -130,6 +135,15 @@ def create_app(
         if not key or not store.ready():
             raise HTTPException(status_code=503, detail="Service unavailable")
         return {"status": "ready"}
+
+    @app.get(
+        "/v1/auth/identity", response_model=AnalystIdentity,
+        dependencies=[Depends(authorize)],
+    )
+    def analyst_identity(
+        actor: Annotated[str | None, Depends(authorize_analyst)],
+    ) -> AnalystIdentity:
+        return AnalystIdentity(mode="analyst" if analyst_digests else "shared", actor=actor)
 
     @app.get("/ui", include_in_schema=False)
     def incident_view() -> HTMLResponse:

@@ -72,6 +72,12 @@ control. Once configured, close requests require both the normal `X-API-Key`
 and an `X-Analyst-Key` matching one configured analyst. Invalid or missing
 analyst keys return 401 without closing the incident. Without this mode, the
 existing shared-key close flow continues with no actor attribution.
+`GET /v1/auth/identity` checks the same keys without changing an incident.
+With analyst mode enabled it requires both headers and returns
+`{"mode":"analyst","actor":"<configured name>"}`. In shared mode it accepts
+the platform API key and returns `{"mode":"shared","actor":null}`. It never
+returns a key. Use this endpoint to check which mode is active before
+offering an analyst action.
 `GET /v1/incidents/{incident_id}/history` returns durable close/reopen/merge
 transitions in processing order. Close entries include the API request ID;
 in analyst-key mode, they also include the matching `actor` name. Existing
