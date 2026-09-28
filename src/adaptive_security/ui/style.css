@@ -50,6 +50,8 @@ h3 { font-size: 17px; margin: 0; }
 .empty-state h2 { color: #24414a; margin-bottom: 8px; }
 .empty-icon { display: block; font-size: 50px; color: #83b5a9; }
 #selected-title { margin: 5px 0 4px; font-size: 25px; }
+.close-form { margin: 18px 0; padding: 16px; border: 1px solid #dbe5e6; border-radius: 10px; background: #f7faf9; }
+.close-form .muted { margin: 9px 0 0; }
 .tags { display: flex; gap: 7px; flex-wrap: wrap; margin: 18px 0 22px; }
 .tag { background: #e9f3f1; color: #275b53; border-radius: 6px; padding: 6px 9px; font-size: 12px; overflow-wrap: anywhere; }
 .signal { border-left: 3px solid #5a9e8c; background: #f2f8f6; padding: 11px 14px; margin: 9px 0; border-radius: 0 8px 8px 0; font-size: 13px; }
