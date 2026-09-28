@@ -46,6 +46,8 @@
   remainder before choosing a policy.
 - Newly ingested Wazuh SCA alerts retain bounded policy, check, and summary
   metadata in canonical attributes while omitting remediation and raw commands.
+- Consistent SQLite backup and verification utility writes a private snapshot
+  with SHA256, table counts, and integrity checks before retention work.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
@@ -67,7 +69,7 @@
   the original Wazuh alerts remain the detailed source for those records.
 
 ## Next
-1. Define retention policy and archival guarantees before deleting events;
+1. Define retention policy and selective archival guarantees before deleting events;
    bound incident update work for long correlation runs.
 2. Identity-aware analyst actions before adding UI response controls.
 3. Run both signal evaluations on permissioned benign lookalikes and malicious

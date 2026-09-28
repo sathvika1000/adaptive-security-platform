@@ -73,35 +73,6 @@ dashboard. The official stack's initial dashboard credentials are `admin` /
 certificate causes a browser warning. Indexer startup can take a minute or
 more.
 
-## Certificate permission repair on macOS
-
-If the generator reports `cp: cannot create regular file
-'/certificates/root-ca-manager.pem': Permission denied` and manager startup
-cannot mount that path, the two manager CA copies were not written. Wazuh's
-generator changes the certificate directory to read-only before that copy.
-From `~/wazuh-docker/single-node`, repair only those missing copies:
-
-```sh
-(
-  set -e
-  certs=config/wazuh_indexer_ssl_certs
-  test -f "$certs/root-ca.pem"
-  test -f "$certs/root-ca.key"
-  chmod u+w "$certs"
-  cp "$certs/root-ca.pem" "$certs/root-ca-manager.pem"
-  cp "$certs/root-ca.key" "$certs/root-ca-manager.key"
-  chmod 400 "$certs/root-ca-manager.pem" "$certs/root-ca-manager.key"
-  chmod u-w "$certs"
-)
-```
-
-Then repeat the `docker compose ... up -d` and `ps` commands above. Do not
-rerun the generator against a partially started stack, as that would replace
-its CA and certificates. If any repair command fails, inspect
-`ls -ld config/wazuh_indexer_ssl_certs` and
-`ls -l config/wazuh_indexer_ssl_certs/root-ca*` before changing permissions
-further. Never paste the contents of a private `.key` file.
-
 ## 4. Connect the alert file
 
 Back in the platform repository, in the same Terminal session with
@@ -122,111 +93,53 @@ The shared network namespace lets the sidecar contact the API on loopback.
 If Wazuh has not produced `alerts.json` yet, the forwarder retries on its
 restart policy. A malformed alert or failed API delivery stops on that line;
 check its logs rather than deleting the cursor.
-The forwarder logs `{"event":"wazuh_alerts_forwarded","count":N}` after a
-successful batch. An empty log when no alerts arrive is normal. Its Compose
-service intentionally has no inherited API health check: `Up` says that the
-forwarder process is running; `/ready` checks the platform API separately.
-Confirm delivery by retrieving a Wazuh event from the API as shown below.
 
-## 5. Verify Wazuh decoding and incident correlation
-
-A manager-local SCA alert can verify the forwarding path. Retrieve an alert
-ID from `alerts.json`, then use
-`curl -fsS -H "X-API-Key: $ASP_API_KEY"
-http://127.0.0.1:8000/v1/events/wazuh/<ALERT_ID>` to confirm that the
-platform stored it. A new Terminal session must restore the same API key;
-you can capture it without displaying it using
-`export ASP_API_KEY="$(docker exec adaptive-security-platform-platform-1 printenv ASP_API_KEY)"`.
-
-For a repeatable authentication test, the pinned Wazuh manager configuration
-already monitors `/var/ossec/logs/active-responses.log` as syslog. Append two
-clearly synthetic SSH lines there. This exercises the Wazuh log collector,
-SSH decoder and rule 5710, JSON alert writer, forwarder, and correlation API.
-It does not represent actual SSH login attempts. From the platform repository:
+For a live end-to-end check, first generate two permitted authentication
+events on an endpoint that Wazuh monitors, with the same target account and
+host within 15 minutes. Confirm two different IDs appear in the manager's
+`/var/ossec/logs/alerts/alerts.json`, then check the platform with the same
+key:
 
 ```sh
-docker compose -p asp-wazuh \
-  -f ../wazuh-docker/single-node/docker-compose.yml \
-  -f deploy/wazuh-loopback.yaml exec -T -u 0 wazuh.manager sh -ec '
-log=/var/ossec/logs/active-responses.log
-test -f "$log"
-stamp=$(date "+%b %e %H:%M:%S")
-printf "%s wazuh.manager sshd[4242]: Invalid user asp-demo from 198.51.100.42 port 55201\n" "$stamp" >> "$log"
-printf "%s wazuh.manager sshd[4243]: Invalid user asp-demo from 198.51.100.42 port 55202\n" "$stamp" >> "$log"
-'
-```
-
-After several seconds, verify two distinct alert IDs with `srcuser`
-`asp-demo`, then retrieve the incident:
-
-```sh
-docker compose -p asp-wazuh \
-  -f ../wazuh-docker/single-node/docker-compose.yml \
-  -f deploy/wazuh-loopback.yaml exec -T wazuh.manager \
-  sh -c "grep 'asp-demo' /var/ossec/logs/alerts/alerts.json | tail -n 2"
+docker compose -p asp-wazuh -f ../wazuh-docker/single-node/docker-compose.yml \
+  -f deploy/wazuh-loopback.yaml exec wazuh.manager \
+  sh -c 'tail -n 2 /var/ossec/logs/alerts/alerts.json'
 curl -fsS -H "X-API-Key: $ASP_API_KEY" http://127.0.0.1:8000/v1/incidents
 ```
 
-The expected incident has user `asp-demo`, host `wazuh.manager`, and two
-event IDs. Running the test again more than 15 minutes later forms another
-incident because the correlation window has elapsed. The test was validated
-on Apple Silicon Docker Desktop with Wazuh 4.14.8. For real endpoint
-coverage, enroll a Wazuh agent and confirm its authentication alerts have
-a user (`dstuser` or `srcuser`) and agent name; manager-local test events do
-not monitor the Mac itself.
+Run the `docker compose ... exec` command from the platform repository (the
+first file's relative paths resolve against the Wazuh directory). The two
+alerts must have a recognized authentication group, a user (`dstuser` or
+`srcuser`), and an agent name for this POC's correlation contract. Manager
+startup alone does not create that pair. An empty incident list means to
+inspect the actual alert fields and forwarder logs before changing rules.
 
-## 6. Enroll the Mac itself (optional endpoint coverage)
+## Back up the platform database
 
-The manager-local SSH test proves the integration but does not monitor macOS.
-Wazuh 4.14.8 offers an Apple Silicon agent package. The agent runs persistently
-with elevated privileges and sends host security telemetry to this manager.
-This local development stack publishes enrollment (1515/TCP) and event
-transport (1514/TCP) on 127.0.0.1, so `WAZUH_MANAGER='127.0.0.1'` applies
-only to an agent installed on this same Mac. Do not use it for another host.
-
-On the Mac, first check whether an agent already exists:
+From the platform repository, keep the API running and create a SQLite
+snapshot in its named volume. Copy both snapshot files to the Mac before
+relying on the backup:
 
 ```sh
-test -e /Library/Ossec/etc/ossec.conf && echo 'Existing agent: inspect its configuration' || echo 'No agent installed'
+backup_name="security-$(date -u +%Y%m%dT%H%M%SZ).db"
+mkdir -p artifacts
+docker exec adaptive-security-platform-platform-1 \
+  python -m adaptive_security.backup create /data/security.db "/data/$backup_name"
+docker exec adaptive-security-platform-platform-1 \
+  python -m adaptive_security.backup verify "/data/$backup_name"
+docker cp "adaptive-security-platform-platform-1:/data/$backup_name" \
+  "artifacts/$backup_name"
+docker cp "adaptive-security-platform-platform-1:/data/$backup_name.manifest.json" \
+  "artifacts/$backup_name.manifest.json"
 ```
 
-If no agent is installed, download and install the pinned ARM64 package:
+Keep the two copied files together and compare the output of
+`shasum -a 256 "artifacts/$backup_name"` with the manifest's `sha256` before moving them to
+protected storage. The `artifacts/` directory is ignored by Git. The snapshot
+includes events, incidents, aliases, transitions, baselines, and signals; it
+does not include Wazuh's indexer, manager, or forwarder cursor volumes. Avoid
+deleting the live database or its volume as part of the backup procedure.
 
-```sh
-cd ~/Downloads
-(
-  set -e
-  curl -fL -O https://packages.wazuh.com/4.x/macos/wazuh-agent-4.14.8-1.arm64.pkg
-  pkgutil --check-signature wazuh-agent-4.14.8-1.arm64.pkg
-  umask 077
-  printf "WAZUH_MANAGER='127.0.0.1'\n" > /tmp/wazuh_envs
-  sudo installer -pkg wazuh-agent-4.14.8-1.arm64.pkg -target /
-  rm -f /tmp/wazuh_envs
-  sudo launchctl bootstrap system /Library/LaunchDaemons/com.wazuh.agent.plist
-)
-```
-
-Do not rerun the installer over an existing agent without first inspecting
-its manager address and enrollment state. The `sudo` commands prompt for the
-Mac administrator password locally; do not paste it into a chat or repository.
-
-Check the agent and manager registration:
-
-```sh
-sudo /Library/Ossec/bin/wazuh-control status
-sudo tail -n 30 /Library/Ossec/logs/ossec.log
-cd ~/adaptive-security-platform
-docker compose -p asp-wazuh \
-  -f ../wazuh-docker/single-node/docker-compose.yml \
-  -f deploy/wazuh-loopback.yaml exec -T wazuh.manager \
-  /var/ossec/bin/agent_control -l
-```
-
-Look for an `Active` agent with the Mac's computer name in the CLI or
-**Agents > Summary** in the dashboard. The agent may take a short time to
-enroll and report. If it does not, check its local log and that Docker
-Desktop is running and ports 1514/1515 remain published. The manager stack
-must be running whenever this agent tries to report.
 ## Stop and restart
 
 ```sh
