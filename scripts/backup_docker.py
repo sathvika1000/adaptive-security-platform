@@ -10,7 +10,7 @@ import sqlite3
 import subprocess
 import tempfile
 from contextlib import closing
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 TABLES = (
@@ -43,7 +43,7 @@ def verify_host_copy(database: Path) -> None:
 def backup_docker(container: str, output_dir: Path) -> Path:
     os.umask(0o077)
     output_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    name = f"security-{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{secrets.token_hex(4)}.db"
+    name = f"security-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{secrets.token_hex(4)}.db"
     remote = f"/data/{name}"
     final = output_dir / name.removesuffix(".db")
     if final.exists():
