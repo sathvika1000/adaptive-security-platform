@@ -59,6 +59,9 @@
 - Read-only archive reconciliation compares a verified archive with a fresh
   verified snapshot to expose relinked, changed, missing, and newly eligible
   events before any retention decision.
+- Authenticated retention preview defaults to a rolling 90-day window and
+  accepts a bounded days override or an explicit timezone-aware cutoff;
+  it reports the chosen window and leaves all stored evidence untouched.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
@@ -80,10 +83,10 @@
   the original Wazuh alerts remain the detailed source for those records.
 
 ## Next
-1. Choose a retention window and decide whether unlinked archived records
-   may ever be deleted. Require fresh backup, archive verification, and
-   zero-drift reconciliation before considering deletion. Bound incident
-   update work for long correlation runs.
+1. Observe storage growth under the provisional 90-day active and one-year
+   archive policy. Decide whether unlinked archived records may ever be
+   deleted; require fresh backup, archive verification, and zero-drift
+   reconciliation first. Bound incident update work for long correlation runs.
 2. Identity-aware analyst actions before adding UI response controls.
 3. Run both signal evaluations on permissioned benign lookalikes and malicious
    samples before considering shadow signal promotion.
