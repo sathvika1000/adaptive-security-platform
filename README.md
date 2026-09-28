@@ -127,6 +127,19 @@ runs. The command does not rotate or delete any backup.
 This is a full database snapshot, not a retention deletion or a backup of
 Wazuh's own volumes.
 
+To inspect observed platform growth across two or more verified host backups:
+
+```sh
+python -m adaptive_security.storage_trend artifacts
+```
+
+The read-only report sorts snapshots by creation time and shows event and
+incident counts, database bytes, and changes between consecutive backups.
+It verifies each database, checksum, and table counts before reporting; it
+does not forecast long-term usage from a short interval. You can also pass
+individual `.db` paths. The report covers only platform SQLite backups, not
+Wazuh indexer or manager volumes.
+
 ## Archive retention candidates
 
 From a verified platform database snapshot and its manifest, export the older
@@ -168,8 +181,8 @@ incident/signal/correlation status changed, and newly eligible events absent
 from the original archive. `reconciled: true` means those counts match, not
 that deletion is safe or authorized. Run a new verified backup before this
 check; it reads snapshots only. Incident evidence, signal evidence, and
-correlatable events remain protected regardless of age. The retention window
-is still to be chosen, and no command deletes platform events.
+correlatable events remain protected regardless of age. The provisional
+window is 90 days, and no command deletes platform events.
 
 ## Incident workspace
 
