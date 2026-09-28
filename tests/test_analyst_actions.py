@@ -32,7 +32,7 @@ def test_analyst_keys_attribute_close_actions_and_survive_restart(tmp_path: Path
     assert client.get(identity, headers={**headers, "X-Analyst-Key": "wrong"})\
         .status_code == 401
     assert client.get(identity, headers={**headers, "X-Analyst-Key": configured["sathvika"]})\
-        .json() == {"mode": "analyst", "actor": "sathvika"}
+        .json() == {"mode": "analyst", "actor": "sathvika", "permissions": ["close"]}
 
     assert client.post(close, headers=headers).status_code == 401
     assert client.post(close, headers={**headers, "X-Analyst-Key": "wrong"}).status_code == 401
@@ -68,6 +68,13 @@ def test_analyst_configuration_rejects_duplicate_or_weak_keys(tmp_path: Path) ->
         create_app(database, "shared", {"name with spaces": "a" * 64})
     with pytest.raises(ValueError, match="distinct"):
         create_app(database, "a" * 64, {"one": "a" * 64})
+    with pytest.raises(ValueError, match="permissions"):
+        create_app(database, "shared", {"one": {"key": "a" * 64, "permissions": ["admin"]}})
+    with pytest.raises(ValueError, match="permissions"):
+        create_app(database, "shared", {"one": {"key": "a" * 64,
+                                                "permissions": ["close", "close"]}})
+    with pytest.raises(ValueError, match="key and permissions"):
+        create_app(database, "shared", {"one": {"key": "a" * 64}})
 
 
 def test_analyst_keys_load_from_environment(
@@ -89,4 +96,33 @@ def test_identity_reports_legacy_shared_mode_without_attributing_actor(tmp_path:
     client = TestClient(create_app(str(tmp_path / "events.db"), "shared", {}))
     response = client.get("/v1/auth/identity", headers={"X-API-Key": "shared"})
     assert response.status_code == 200
-    assert response.json() == {"mode": "shared", "actor": None}
+    assert response.json() == {"mode": "shared", "actor": None, "permissions": ["close"]}
+
+
+def test_read_only_analyst_cannot_close_incident(tmp_path: Path) -> None:
+    database = str(tmp_path / "events.db")
+    keys = {
+        "reviewer": {"key": "r" * 64, "permissions": []},
+        "responder": {"key": "c" * 64, "permissions": ["close"]},
+    }
+    client = TestClient(create_app(database, "shared", keys))
+    headers = {"X-API-Key": "shared"}
+    client.post("/v1/events/wazuh", json=_alert("first", 10), headers=headers)
+    incident = client.post("/v1/events/wazuh", json=_alert("second", 12),
+                           headers=headers).json()["incident"]
+    url = f"/v1/incidents/{incident['incident_id']}"
+    reviewer_headers = {**headers, "X-Analyst-Key": "r" * 64}
+    assert client.get("/v1/auth/identity", headers=reviewer_headers).json() == {
+        "mode": "analyst", "actor": "reviewer", "permissions": [],
+    }
+    denied = client.post(url + "/close", headers=reviewer_headers)
+    assert denied.status_code == 403
+    assert client.get(url, headers=headers).json()["status"] == "open"
+    assert client.get(url + "/history", headers=headers).json() == []
+
+    responder_headers = {**headers, "X-Analyst-Key": "c" * 64}
+    assert client.get("/v1/auth/identity", headers=responder_headers).json()["permissions"] == [
+        "close"
+    ]
+    assert client.post(url + "/close", headers=responder_headers).json()["status"] == "closed"
+    assert client.get(url + "/history", headers=headers).json()[0]["actor"] == "responder"
