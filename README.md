@@ -35,9 +35,12 @@ events in event-time order, with source and event ID for each. It accepts
 Retired incident aliases return the surviving incident's combined evidence;
 a missing incident returns 404. This endpoint presents normalized events,
 not raw Wazuh alert bodies.
-`GET /v1/storage/retention-preview?before=<UTC timestamp>` returns an
-authenticated, read-only inventory of events with event times before the
-specified cutoff. It reports total events, older events linked to incidents,
+`GET /v1/storage/retention-preview` returns an authenticated, read-only
+inventory using a rolling 90-day window. Use `?days=30` to inspect a different
+window (1–3650 days), or `?before=<UTC timestamp>` for an exact cutoff. Supply
+only one of `days` and `before`. The response includes `before` (the actual UTC
+cutoff) and `window_days` (null for an explicit cutoff). It reports total events,
+older events linked to incidents,
 older events carrying signals without incidents, older correlatable events
 without either, and other older events. The categories do not overlap.
 The cutoff must include a timezone and is exclusive. This is a planning
@@ -47,6 +50,17 @@ is enabled. The response also includes the 20 most frequent source/category/
 rule combinations among older unlinked other events. This breakdown is
 aggregate and may cover fewer events than the `unlinked_other` total when
 there are more than 20 distinct combinations.
+
+For this single-Mac proof of concept, the proposed policy keeps all events
+searchable in the platform for at least 90 days by event time. After that,
+only `unlinked_other` events become archive candidates. Incident evidence,
+signal evidence, and correlatable events stay in the platform for the life of
+the project. Keep verified archives and their manifests for at least one year,
+with the full source backup needed to prove export eligibility. These periods
+are project defaults, not a claim of regulatory compliance. Archiving and
+verification remain manual; the API preview never archives or deletes events.
+Wazuh manager alert files and indexer data have separate storage policies;
+measure their growth before enabling any index retention rule.
 `POST /v1/incidents/{incident_id}/close` closes an incident. A newly ingested
 failure with an event time later than the incident's previous last-seen time
 reopens it; older evidence leaves it closed. Repeated closes are idempotent.
