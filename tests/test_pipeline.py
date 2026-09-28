@@ -366,6 +366,43 @@ def test_retention_preview_partitions_old_events_without_deleting_evidence(
     assert client.get("/v1/events/wazuh/unlinked-file", headers=headers).status_code == 200
 
 
+def test_retention_preview_defaults_to_ninety_days_and_accepts_window_override(
+    tmp_path: Path,
+) -> None:
+    client = TestClient(create_app(str(tmp_path / "events.db"), "secret"))
+    headers = {"X-API-Key": "secret"}
+    now = datetime.now(UTC)
+    for event_id, age in (("old", 100), ("middle", 45), ("recent", 1)):
+        payload = alert(event_id, 0)
+        payload["timestamp"] = (now - timedelta(days=age)).isoformat()
+        payload["rule"] = {"id": "510", "level": 7, "groups": []}
+        assert client.post("/v1/events/wazuh", json=payload, headers=headers).status_code == 200
+
+    url = "/v1/storage/retention-preview"
+    assert client.get(url).status_code == 401
+    default = client.get(url, headers=headers)
+    assert default.status_code == 200
+    assert default.json()["window_days"] == 90
+    assert default.json()["before_cutoff"] == default.json()["unlinked_other"] == 1
+    assert abs((datetime.fromisoformat(default.json()["before"]) -
+                (now - timedelta(days=90))).total_seconds()) < 30
+
+    thirty = client.get(url, params={"days": 30}, headers=headers)
+    assert thirty.status_code == 200
+    assert thirty.json()["window_days"] == 30
+    assert thirty.json()["unlinked_other"] == 2
+    assert client.get(url, params={"days": 365}, headers=headers).json()["before_cutoff"] == 0
+    explicit = client.get(url, params={"before": (now - timedelta(days=30)).isoformat()},
+                          headers=headers)
+    assert explicit.json()["window_days"] is None
+    assert explicit.json()["unlinked_other"] == 2
+    assert client.get(url, params={"days": 0}, headers=headers).status_code == 422
+    assert client.get(url, params={"days": 3651}, headers=headers).status_code == 422
+    assert client.get(url, params={"days": 90, "before": now.isoformat()},
+                      headers=headers).status_code == 400
+    assert client.get("/v1/events/wazuh/old", headers=headers).status_code == 200
+
+
 def test_bridge_merges_incidents_under_oldest_id(tmp_path: Path) -> None:
     client = TestClient(create_app(str(tmp_path / "events.db"), "secret"))
     headers = {"x-api-key": "secret"}
