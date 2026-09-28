@@ -1,6 +1,6 @@
 from adaptive_security.correlation.engine import CorrelationEngine
 from adaptive_security.correlation.policy import identity
-from adaptive_security.detection.auth_sequence import detect_auth_sequence
+from adaptive_security.detection.auth_sequence import SEQUENCE_RULE_ID, detect_auth_sequence
 from adaptive_security.detection.novel_source import detect_novel_source
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentStatus
@@ -30,7 +30,7 @@ class IngestionService:
                     self.store.save_event_signal(conn, persisted, signal)
                 self.store.save_source_baseline(conn, encoded_key, count + 1,
                                                 ips | {persisted.source_ip})
-            if persisted.outcome == "failure":
+            if persisted.outcome in ("failure", "success"):
                 previous_tail = self.store.tail_incident(conn, persisted)
                 if previous_tail is not None:
                     entities = list(previous_tail.entities)
@@ -41,13 +41,30 @@ class IngestionService:
                             seen.add((entity.type, entity.value))
                     reopened = (
                         previous_tail.status is IncidentStatus.CLOSED
+                        and persisted.outcome == "failure"
                         and persisted.event_time > previous_tail.last_seen
                     )
+                    signals = previous_tail.signals
+                    if persisted.outcome == "success":
+                        new_sequence = detect_auth_sequence([
+                            *self.store.recent_failures(conn, persisted), persisted
+                        ])
+                        sequence = tuple(
+                            signal for signal in signals if signal.rule_id == SEQUENCE_RULE_ID
+                        )
+                        other = tuple(
+                            signal for signal in signals if signal.rule_id != SEQUENCE_RULE_ID
+                        )
+                        signals = (
+                            *sequence, *new_sequence, *other,
+                            *self.store.signals_for_events(conn, [persisted]),
+                        )
                     incident = previous_tail.model_copy(update={
                         "last_seen": persisted.event_time,
                         "severity": max(previous_tail.severity, persisted.severity),
                         "event_ids": (*previous_tail.event_ids, persisted.event_id),
                         "entities": tuple(entities),
+                        "signals": signals,
                         "status": IncidentStatus.OPEN if reopened else previous_tail.status,
                     })
                     self.store.save_incident(conn, incident, [(persisted, None)], set(), persisted)

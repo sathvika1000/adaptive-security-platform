@@ -186,9 +186,11 @@ arrival, merge, or success still reads all its members. Event row
 assignments are written only for new or reassigned members, so ordinary
 incident growth does not rewrite every existing event row. Persisted signal
 lookups use batches of 128 event identities while keeping signal order aligned
-with the incident timeline. A failed authentication appended at the tail of
-an existing incident reuses the stored aggregate without scanning its event
-bodies; late arrivals, merges, and successes still rebuild the connected run.
+with the incident timeline. An authentication event appended at the tail of
+an existing incident reuses the stored aggregate. For a success, the platform
+reads at most the three most recent failures within 15 minutes to preserve the
+sequence signal, and retains persisted shadow signals in timeline order.
+Late arrivals and merges still rebuild the connected run.
 The incident record itself still grows with its evidence IDs, so this is not
 a fixed-size incident design. Existing SQLite databases are migrated on startup
 without discarding incidents or status.

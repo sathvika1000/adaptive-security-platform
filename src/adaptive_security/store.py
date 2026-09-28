@@ -235,6 +235,23 @@ class SQLiteStore:
         incident = self.stored_incident(conn, before[1])
         return incident if incident and incident.last_seen <= event.event_time else None
 
+    def recent_failures(
+        self, conn: sqlite3.Connection, event: SecurityEvent
+    ) -> list[SecurityEvent]:
+        encoded = correlation_key(event)
+        if encoded is None:
+            return []
+        rows = conn.execute(
+            """SELECT body FROM events
+               WHERE correlation_key = ? AND event_time >= ?
+                 AND (event_time, source, event_id) < (?, ?, ?)
+                 AND json_extract(body, '$.outcome') = 'failure'
+               ORDER BY event_time DESC, source DESC, event_id DESC LIMIT 3""",
+            (encoded, (event.event_time - WINDOW).astimezone(UTC).isoformat(),
+             event.event_time.astimezone(UTC).isoformat(), event.source, event.event_id),
+        ).fetchall()
+        return [SecurityEvent.model_validate_json(row[0]) for row in reversed(rows)]
+
     def source_baseline(
         self, conn: sqlite3.Connection, key: str
     ) -> tuple[int, set[str]]:
