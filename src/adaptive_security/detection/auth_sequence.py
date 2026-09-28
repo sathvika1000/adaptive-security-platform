@@ -5,6 +5,7 @@ from adaptive_security.domain.detections import DetectionSignal
 from adaptive_security.domain.events import SecurityEvent
 
 WINDOW = timedelta(minutes=15)
+SEQUENCE_RULE_ID = "auth.failures_then_success"
 
 
 def detect_auth_sequence(events: list[SecurityEvent]) -> tuple[DetectionSignal, ...]:
@@ -19,7 +20,7 @@ def detect_auth_sequence(events: list[SecurityEvent]) -> tuple[DetectionSignal, 
             evidence = (*list(failures)[-3:], event)
             signals.append(
                 DetectionSignal(
-                    rule_id="auth.failures_then_success",
+                    rule_id=SEQUENCE_RULE_ID,
                     rule_version=1,
                     title="Repeated authentication failures followed by success",
                     evidence_event_ids=tuple(item.event_id for item in evidence),
@@ -27,4 +28,3 @@ def detect_auth_sequence(events: list[SecurityEvent]) -> tuple[DetectionSignal, 
                 )
             )
     return tuple(signals)
-

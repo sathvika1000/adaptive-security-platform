@@ -232,6 +232,54 @@ def test_failed_tail_append_reuses_incident_and_matches_full_rebuild(tmp_path: P
     ]
 
 
+def test_success_tail_matches_full_rebuild_with_sequence_and_shadow_signals(
+    tmp_path: Path,
+) -> None:
+    connector = WazuhConnector()
+    stores = [SQLiteStore(str(tmp_path / f"{name}.db")) for name in ("fast", "full")]
+    services = [IngestionService(store) for store in stores]
+
+    def success(event_id: str, minute: int, ip: str) -> SecurityEvent:
+        payload = alert(event_id, minute)
+        payload["rule"]["groups"] = ["authentication_success"]
+        payload["data"]["srcip"] = ip
+        return connector.normalize(payload)
+
+    for service in services:
+        for minute in range(5):
+            service.ingest(success(f"known-{minute}", minute, "198.51.100.1"))
+        for minute in (5, 6, 7):
+            service.ingest(connector.normalize(alert(f"failure-{minute}", minute)))
+
+    novel = success("novel", 8, "198.51.100.2")
+    with patch.object(stores[0], "connected_events", side_effect=AssertionError("full scan")):
+        with patch.object(SecurityEvent, "model_validate_json",
+                          wraps=SecurityEvent.model_validate_json) as decode:
+            _, fast = services[0].ingest(novel)
+        assert decode.call_count == 3
+    with patch.object(stores[1], "tail_incident", return_value=None):
+        _, full = services[1].ingest(novel)
+    assert fast == full
+    assert fast is not None
+    assert [signal.rule_id for signal in fast.signals] == [
+        "auth.failures_then_success", "auth.novel_source_ip"
+    ]
+
+    for service in services:
+        for minute in (9, 10, 11):
+            service.ingest(connector.normalize(alert(f"failure-{minute}", minute)))
+    repeat = success("repeat", 12, "198.51.100.2")
+    with patch.object(stores[0], "connected_events", side_effect=AssertionError("full scan")):
+        _, fast = services[0].ingest(repeat)
+    with patch.object(stores[1], "tail_incident", return_value=None):
+        _, full = services[1].ingest(repeat)
+    assert fast == full
+    assert fast is not None
+    assert [signal.rule_id for signal in fast.signals] == [
+        "auth.failures_then_success", "auth.failures_then_success", "auth.novel_source_ip"
+    ]
+
+
 def test_late_failure_uses_full_rebuild_for_timeline_order(tmp_path: Path) -> None:
     store = SQLiteStore(str(tmp_path / "late.db"))
     service = IngestionService(store)
