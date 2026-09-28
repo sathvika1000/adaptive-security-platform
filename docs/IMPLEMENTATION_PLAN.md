@@ -33,6 +33,9 @@
   signals, lifecycle history, and an in-memory API key.
 - Indexed correlation neighbors are read in pages of 128, reducing query
   round trips on long connected authentication runs.
+- Authenticated retention preview counts older incident evidence, shadow-signal
+  evidence, unlinked correlatable activity, and other unlinked events without
+  modifying stored records.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
@@ -51,7 +54,8 @@
   manager-decoded synthetic SSH logs, not a real login sequence.
 
 ## Next
-1. Event retention and bounded incident update work for long correlation runs.
+1. Define retention policy and archival guarantees before deleting events;
+   bound incident update work for long correlation runs.
 2. Identity-aware analyst actions before adding UI response controls.
 3. Run both signal evaluations on permissioned benign lookalikes and malicious
    samples before considering shadow signal promotion.

@@ -30,6 +30,15 @@ events in event-time order, with source and event ID for each. It accepts
 Retired incident aliases return the surviving incident's combined evidence;
 a missing incident returns 404. This endpoint presents normalized events,
 not raw Wazuh alert bodies.
+`GET /v1/storage/retention-preview?before=<UTC timestamp>` returns an
+authenticated, read-only inventory of events with event times before the
+specified cutoff. It reports total events, older events linked to incidents,
+older events carrying signals without incidents, older correlatable events
+without either, and other older events. The categories do not overlap.
+The cutoff must include a timezone and is exclusive. This is a planning
+inventory, not a list of records safe to delete; even unlinked alerts may be
+useful for later investigations or late correlation. No retention deletion
+is enabled.
 `POST /v1/incidents/{incident_id}/close` closes an incident. A newly ingested
 failure with an event time later than the incident's previous last-seen time
 reopens it; older evidence leaves it closed. Repeated closes are idempotent.

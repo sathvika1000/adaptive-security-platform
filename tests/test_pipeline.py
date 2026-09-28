@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from adaptive_security.api import create_app
 from adaptive_security.connectors.wazuh import WazuhConnector
+from adaptive_security.domain.detections import DetectionSignal
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.service import IngestionService
 from adaptive_security.store import SQLiteStore
@@ -137,6 +138,48 @@ def test_connected_run_scans_indexed_neighbors_in_pages(tmp_path: Path) -> None:
         sql for sql in statements if "SELECT event_time, body, incident_id FROM events" in sql
     ]
     assert len(neighbor_queries) == 4
+
+
+def test_retention_preview_partitions_old_events_without_deleting_evidence(
+    tmp_path: Path,
+) -> None:
+    path = str(tmp_path / "events.db")
+    client = TestClient(create_app(path, "secret"))
+    headers = {"X-API-Key": "secret"}
+    payloads = [
+        alert("incident-a", 0), alert("incident-b", 1),
+        alert("unlinked-auth", 100, user="carol"),
+        alert("unlinked-file", 101, user="carol"),
+        alert("shadow", 102, user="bob"),
+        alert("at-cutoff", 103, user="dave"),
+    ]
+    payloads[3]["rule"]["groups"] = ["syscheck"]
+    payloads[4]["rule"]["groups"] = ["authentication_success"]
+    for payload in payloads:
+        assert client.post("/v1/events/wazuh", json=payload, headers=headers).status_code == 200
+
+    store = SQLiteStore(path)
+    with store.transaction() as conn:
+        store.save_event_signal(
+            conn, WazuhConnector().normalize(payloads[4]),
+            DetectionSignal(rule_id="shadow", rule_version=1, title="Signal",
+                            evidence_event_ids=("shadow",), priority=4, mode="shadow"),
+        )
+    cutoff = payloads[5]["timestamp"]
+    url = "/v1/storage/retention-preview"
+    assert client.get(url, params={"before": cutoff}).status_code == 401
+    assert client.get(url, params={"before": "2026-09-27T03:43:00"},
+                      headers=headers).status_code == 422
+    summary = client.get(url, params={"before": cutoff}, headers=headers)
+    assert summary.status_code == 200
+    assert {key: summary.json()[key] for key in (
+        "total_events", "before_cutoff", "incident_evidence", "signal_evidence",
+        "unlinked_correlatable", "unlinked_other",
+    )} == {
+        "total_events": 6, "before_cutoff": 5, "incident_evidence": 2,
+        "signal_evidence": 1, "unlinked_correlatable": 1, "unlinked_other": 1,
+    }
+    assert client.get("/v1/events/wazuh/unlinked-file", headers=headers).status_code == 200
 
 
 def test_bridge_merges_incidents_under_oldest_id(tmp_path: Path) -> None:
