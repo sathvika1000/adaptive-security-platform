@@ -1,7 +1,9 @@
+import hashlib
 import hmac
 import json
 import logging
 import os
+import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from importlib.resources import files
@@ -29,6 +31,25 @@ class IngestionResult(BaseModel):
 
 logger = logging.getLogger("uvicorn.error")
 DEFAULT_RETENTION_DAYS = 90
+_ACTOR_NAME = re.compile(r"[A-Za-z0-9._-]{1,64}\Z")
+
+
+def _analyst_digests(config: object, shared_key: str | None) -> tuple[tuple[str, str], ...]:
+    if not isinstance(config, dict):
+        raise ValueError("analyst keys must be a JSON object")
+    result = []
+    seen = set()
+    for actor, token in config.items():
+        if not isinstance(actor, str) or not _ACTOR_NAME.fullmatch(actor):
+            raise ValueError("invalid analyst name; use 1-64 letters, digits, . _ or -")
+        if not isinstance(token, str) or len(token) < 32 or token == shared_key:
+            raise ValueError("each analyst key must be distinct and at least 32 characters")
+        digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        if digest in seen:
+            raise ValueError("analyst keys must be unique")
+        seen.add(digest)
+        result.append((actor, digest))
+    return tuple(result)
 _UI_HEADERS = {
     "Cache-Control": "no-store",
     "Referrer-Policy": "no-referrer",
@@ -41,12 +62,18 @@ _UI_HEADERS = {
 }
 
 
-def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAPI:
+def create_app(
+    db_path: str | None = None, api_key: str | None = None,
+    analyst_keys: dict[str, str] | None = None,
+) -> FastAPI:
     app = FastAPI(title="Adaptive Security Platform", version="0.1.0")
     app.add_middleware(AlertBodyLimit)
     store = SQLiteStore(db_path or os.environ.get("ASP_DB_PATH", "./security.db"))
     service = IngestionService(store)
     key = api_key if api_key is not None else os.environ.get("ASP_API_KEY")
+    configured = (analyst_keys if analyst_keys is not None else
+                  json.loads(os.environ.get("ASP_ANALYST_KEYS_JSON") or "{}"))
+    analyst_digests = _analyst_digests(configured, key)
 
     @app.middleware("http")
     async def trace_request(
@@ -79,6 +106,20 @@ def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAP
             raise HTTPException(status_code=503, detail="API key is not configured")
         if not x_api_key or not hmac.compare_digest(x_api_key, key):
             raise HTTPException(status_code=401, detail="Unauthorized")
+
+    def authorize_analyst(x_analyst_key: str | None = Header(default=None)) -> str | None:
+        if not analyst_digests:
+            return None
+        if not x_analyst_key:
+            raise HTTPException(status_code=401, detail="Analyst key required")
+        provided = hashlib.sha256(x_analyst_key.encode("utf-8")).hexdigest()
+        actor = None
+        for name, digest in analyst_digests:
+            if hmac.compare_digest(provided, digest):
+                actor = name
+        if actor is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        return actor
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -187,8 +228,13 @@ def create_app(db_path: str | None = None, api_key: str | None = None) -> FastAP
         response_model=Incident,
         dependencies=[Depends(authorize)],
     )
-    def close_incident(incident_id: str, request: Request) -> Incident:
-        incident = store.close_incident(incident_id, request_id=request.state.request_id)
+    def close_incident(
+        incident_id: str, request: Request,
+        actor: Annotated[str | None, Depends(authorize_analyst)],
+    ) -> Incident:
+        incident = store.close_incident(
+            incident_id, request_id=request.state.request_id, actor=actor
+        )
         if incident is None:
             raise HTTPException(status_code=404, detail="Incident not found")
         return incident
