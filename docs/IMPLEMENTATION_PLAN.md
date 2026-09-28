@@ -103,7 +103,7 @@
    records may ever be deleted; require fresh backup, archive verification, and zero-drift
    reconciliation first. Bound incident update work for long correlation runs.
 2. Evaluate stronger per-analyst authentication and action permissions before
-   adding UI response controls; the analyst-key mode attributes close actions
+   adding further UI response controls; the analyst-key mode attributes close actions
    but is optional and has no role management or revocation interface.
 3. Run both signal evaluations on permissioned benign lookalikes and malicious
    samples before considering shadow signal promotion.
