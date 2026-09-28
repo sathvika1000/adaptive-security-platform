@@ -24,6 +24,11 @@ arrays ordered by incident ID or transition ID respectively; request the next
 page by increasing `offset`. Concurrent incident merges can shift list offsets.
 GET `/v1/events/{source}/{event_id}` retrieves stored canonical evidence;
 for current Wazuh signals use `wazuh` as the source and each evidence ID.
+For newly ingested Wazuh SCA alerts, the canonical event retains a bounded
+subset of policy, scan, check ID/title/result/status, and summary scores in
+`attributes.sca`. Remediation text, commands, and raw check output are not
+copied. Existing stored events are unchanged because duplicate alert IDs are
+idempotent; use Wazuh for the original detailed SCA records.
 `GET /v1/incidents/{incident_id}/events` returns the incident's canonical
 events in event-time order, with source and event ID for each. It accepts
 `limit` (1–100, default 100) and `offset` (zero or greater, default 0).
