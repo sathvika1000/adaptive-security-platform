@@ -98,6 +98,18 @@ checks its digest, SQLite integrity, and counts. Keep both files together and
 store the copied database privately because it contains security evidence.
 For the Docker Desktop volume and host copy-out procedure, see
 [the Wazuh setup guide](docs/WAZUH_DOCKER_DESKTOP.md#back-up-the-platform-database).
+From the repository root on the Docker Desktop host, the same create, copy,
+and host verification sequence can be run in one command:
+
+```sh
+python3 scripts/backup_docker.py
+```
+
+It writes a private timestamped directory beneath ignored `artifacts/` and
+prints the verified database and manifest paths. Keep the pair together when
+copying it to protected storage. Each invocation leaves a snapshot in the
+platform's Docker volume too; review storage usage before scheduling repeated
+runs. The command does not rotate or delete any backup.
 This is a full database snapshot, not a retention deletion or a backup of
 Wazuh's own volumes.
 
