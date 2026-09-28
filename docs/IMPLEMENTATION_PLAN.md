@@ -37,6 +37,8 @@
   members; late merges still move all members of retired incidents.
 - Persisted signal lookups use bounded batches of event identities instead of
   one query per incident member.
+- Tail-appended authentication failures reuse the incident aggregate without
+  decoding all event bodies; late arrivals and merges retain the full rebuild.
 - Authenticated retention preview counts older incident evidence, shadow-signal
   evidence, unlinked correlatable activity, and other unlinked events without
   modifying stored records; its top-rule breakdown helps inspect the unlinked
@@ -50,8 +52,9 @@
 ## Current limits
 - Correlation remains a user/host authentication rule, not cross-category
   detection. The stateful novelty observation is shadow-only and has no
-  measured real-world precision. Long connected runs still rebuild full incidents;
-  unbounded event retention and per-identity known-IP sets limit throughput.
+  measured real-world precision. Successes, late arrivals, and merges in long
+  connected runs still rebuild full incidents; incident bodies grow with evidence IDs.
+  Unbounded event retention and per-identity known-IP sets limit throughput.
 - The sequence signal is deterministic. Its priority is a heuristic; precision
   on representative real benign and malicious samples has not yet been measured.
 - Merges preserve old links through aliases for newly retired IDs. The shared

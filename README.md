@@ -181,13 +181,17 @@ five-success cold start; synthetic fixtures alone cannot justify promotion.
 The POC indexes authentication events by user/host and event time. Each new
 event walks indexed neighbors in pages of 128 only within its connected
 correlation run, then updates that run while preserving the ID of a matching
-incident as it grows or late events arrive. A long uninterrupted run still
-requires reading all of its members and rebuilding its incident. Event row
+incident as it grows or late events arrive. Rebuilding a long run for a late
+arrival, merge, or success still reads all its members. Event row
 assignments are written only for new or reassigned members, so ordinary
 incident growth does not rewrite every existing event row. Persisted signal
 lookups use batches of 128 event identities while keeping signal order aligned
-with the incident timeline. Existing
-SQLite databases are migrated on startup without discarding incidents or status.
+with the incident timeline. A failed authentication appended at the tail of
+an existing incident reuses the stored aggregate without scanning its event
+bodies; late arrivals, merges, and successes still rebuild the connected run.
+The incident record itself still grows with its evidence IDs, so this is not
+a fixed-size incident design. Existing SQLite databases are migrated on startup
+without discarding incidents or status.
 If a late alert bridges two incidents, the older incident ID survives and the
 other ID is retired. High-volume retention and partitioning are future work.
 Merge retirement keeps a persistent alias for the retired ID. GET and close
