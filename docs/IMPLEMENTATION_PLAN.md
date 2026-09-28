@@ -35,6 +35,8 @@
   round trips on long connected authentication runs.
 - Incident growth updates event assignments only for new or reassigned
   members; late merges still move all members of retired incidents.
+- Persisted signal lookups use bounded batches of event identities instead of
+  one query per incident member.
 - Authenticated retention preview counts older incident evidence, shadow-signal
   evidence, unlinked correlatable activity, and other unlinked events without
   modifying stored records; its top-rule breakdown helps inspect the unlinked

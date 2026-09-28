@@ -13,6 +13,7 @@ from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentStatus, IncidentTransition
 
 NEIGHBOR_PAGE_SIZE = 128
+SIGNAL_PAGE_SIZE = 128
 
 
 class RetentionRuleCount(BaseModel):
@@ -236,15 +237,20 @@ class SQLiteStore:
     def signals_for_events(
         self, conn: sqlite3.Connection, events: list[SecurityEvent]
     ) -> tuple[DetectionSignal, ...]:
-        signals = []
-        for event in events:
-            row = conn.execute(
-                "SELECT body FROM event_signals WHERE source = ? AND event_id = ?",
-                (event.source, event.event_id),
-            ).fetchone()
-            if row:
-                signals.append(DetectionSignal.model_validate_json(row[0]))
-        return tuple(signals)
+        found: dict[tuple[str, str], DetectionSignal] = {}
+        for start in range(0, len(events), SIGNAL_PAGE_SIZE):
+            batch = events[start:start + SIGNAL_PAGE_SIZE]
+            placeholders = ", ".join("(?, ?)" for _ in batch)
+            keys = [(event.source, event.event_id) for event in batch]
+            rows = conn.execute(
+                f"SELECT source, event_id, body FROM event_signals "
+                f"WHERE (source, event_id) IN ({placeholders})",
+                [item for key in keys for item in key],
+            ).fetchall()
+            for source, event_id, body in rows:
+                found[(source, event_id)] = DetectionSignal.model_validate_json(body)
+        ordered_keys = [(event.source, event.event_id) for event in events]
+        return tuple(found[key] for key in ordered_keys if key in found)
 
     def event_signals(self) -> list[DetectionSignal]:
         with self.transaction() as conn:
