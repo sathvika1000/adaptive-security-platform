@@ -43,7 +43,8 @@ def verify_host_copy(database: Path) -> None:
 def backup_docker(container: str, output_dir: Path) -> Path:
     os.umask(0o077)
     output_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    name = f"security-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{secrets.token_hex(4)}.db"
+    # Host Python can be older than the container's Python 3.12.
+    name = f"security-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{secrets.token_hex(4)}.db"  # noqa: UP017
     remote = f"/data/{name}"
     final = output_dir / name.removesuffix(".db")
     if final.exists():
