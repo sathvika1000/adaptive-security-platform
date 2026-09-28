@@ -64,9 +64,21 @@ measure their growth before enabling any index retention rule.
 `POST /v1/incidents/{incident_id}/close` closes an incident. A newly ingested
 failure with an event time later than the incident's previous last-seen time
 reopens it; older evidence leaves it closed. Repeated closes are idempotent.
+For attributed close actions, optionally configure `ASP_ANALYST_KEYS_JSON` as
+a JSON object mapping analyst names to distinct random keys of at least 32
+characters. Compose passes this variable to the platform when set. Generate
+each key with `openssl rand -hex 32`; keep the JSON and keys out of source
+control. Once configured, close requests require both the normal `X-API-Key`
+and an `X-Analyst-Key` matching one configured analyst. Invalid or missing
+analyst keys return 401 without closing the incident. Without this mode, the
+existing shared-key close flow continues with no actor attribution.
 `GET /v1/incidents/{incident_id}/history` returns durable close/reopen/merge
 transitions in processing order. Close entries include the API request ID;
-reopen and merge entries name the triggering source and event ID. Merge entries
+in analyst-key mode, they also include the matching `actor` name. Existing
+close transitions and automated reopen/merge transitions have a null actor;
+previous actions cannot be attributed retrospectively. Analyst keys are not
+recorded in the database or request logs. The UI remains read-only. Reopen and
+merge entries name the triggering source and event ID. Merge entries
 also name the surviving ID. A retired incident alias retrieves the surviving
 incident's combined history while each entry retains the incident ID it had
 when recorded. Existing databases start with an empty history; earlier actions

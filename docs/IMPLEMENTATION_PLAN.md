@@ -68,6 +68,9 @@
 - Read-only Wazuh Docker measurement reports indexer data and manager/alert
   log allocation separately from the platform database, without touching
   the running volumes or printing alert content.
+- Optional analyst-key mode requires a separate key for incident close actions,
+  records the matched actor in durable history, and migrates existing history
+  with null actors while leaving the current shared-key mode available.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
@@ -80,8 +83,9 @@
   Unbounded event retention and per-identity known-IP sets limit throughput.
 - The sequence signal is deterministic. Its priority is a heuristic; precision
   on representative real benign and malicious samples has not yet been measured.
-- Merges preserve old links through aliases for newly retired IDs. The shared
-  API key cannot attribute lifecycle actions to individual analysts.
+- Merges preserve old links through aliases for newly retired IDs. Without
+  analyst-key mode, the shared API key cannot attribute close actions;
+  automated reopen and merge transitions have no human actor.
 - The Apple Silicon Mac agent is enrolled and Active; a real rootcheck alert from
   agent 001 reached the API. Authentication correlation was tested with
   manager-decoded synthetic SSH logs, not a real login sequence.
@@ -93,7 +97,9 @@
    active and one-year archive policy. Decide whether unlinked archived
    records may ever be deleted; require fresh backup, archive verification, and zero-drift
    reconciliation first. Bound incident update work for long correlation runs.
-2. Identity-aware analyst actions before adding UI response controls.
+2. Evaluate stronger per-analyst authentication and action permissions before
+   adding UI response controls; the analyst-key mode attributes close actions
+   but is optional and has no role management or revocation interface.
 3. Run both signal evaluations on permissioned benign lookalikes and malicious
    samples before considering shadow signal promotion.
 

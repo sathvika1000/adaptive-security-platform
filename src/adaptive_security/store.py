@@ -71,9 +71,15 @@ class SQLiteStore:
                 transition_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 incident_id TEXT NOT NULL, action TEXT NOT NULL,
                 occurred_at TEXT NOT NULL, request_id TEXT,
-                event_source TEXT, event_id TEXT, merged_into TEXT
+                event_source TEXT, event_id TEXT, merged_into TEXT,
+                actor TEXT
             )"""
         )
+        transition_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(incident_transitions)")
+        }
+        if "actor" not in transition_columns:
+            conn.execute("ALTER TABLE incident_transitions ADD COLUMN actor TEXT")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS transitions_by_incident "
             "ON incident_transitions(incident_id, transition_id)"
@@ -356,14 +362,16 @@ class SQLiteStore:
     def record_transition(
         self, conn: sqlite3.Connection, incident_id: str, action: str,
         request_id: str | None = None, event: SecurityEvent | None = None,
-        merged_into: str | None = None,
+        merged_into: str | None = None, actor: str | None = None,
     ) -> None:
         conn.execute(
             """INSERT INTO incident_transitions
-               (incident_id, action, occurred_at, request_id, event_source, event_id, merged_into)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (incident_id, action, occurred_at, request_id, event_source, event_id, merged_into,
+                actor)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (incident_id, action, datetime.now(UTC).isoformat(), request_id,
-             event.source if event else None, event.event_id if event else None, merged_into),
+             event.source if event else None, event.event_id if event else None,
+             merged_into, actor),
         )
 
     def incident_history(
@@ -375,7 +383,7 @@ class SQLiteStore:
                 return None
             rows = conn.execute(
                 """SELECT transition_id, incident_id, action, occurred_at,
-                          request_id, event_source, event_id, merged_into
+                          request_id, event_source, event_id, merged_into, actor
                    FROM incident_transitions
                    WHERE incident_id = ? OR incident_id IN
                        (SELECT retired_id FROM incident_aliases WHERE current_id = ?)
@@ -385,7 +393,7 @@ class SQLiteStore:
         return [IncidentTransition(
             transition_id=row[0], incident_id=row[1], action=row[2],
             occurred_at=row[3], request_id=row[4], event_source=row[5], event_id=row[6],
-            merged_into=row[7],
+            merged_into=row[7], actor=row[8],
         ) for row in rows]
 
     def event(self, source: str, event_id: str) -> SecurityEvent | None:
@@ -466,7 +474,9 @@ class SQLiteStore:
             ).fetchall()
         return [SecurityEvent.model_validate_json(row[0]) for row in rows]
 
-    def close_incident(self, incident_id: str, request_id: str | None = None) -> Incident | None:
+    def close_incident(
+        self, incident_id: str, request_id: str | None = None, actor: str | None = None
+    ) -> Incident | None:
         with self.transaction() as conn:
             incident = self.stored_incident(conn, incident_id)
             if incident is None:
@@ -478,7 +488,9 @@ class SQLiteStore:
                 "UPDATE incidents SET body = ? WHERE incident_id = ?",
                 (closed.model_dump_json(), closed.incident_id),
             )
-            self.record_transition(conn, closed.incident_id, "closed", request_id=request_id)
+            self.record_transition(
+                conn, closed.incident_id, "closed", request_id=request_id, actor=actor
+            )
             return closed
 
     def stored_incidents(self, conn: sqlite3.Connection) -> list[Incident]:
