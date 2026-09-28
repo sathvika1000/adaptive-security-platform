@@ -217,15 +217,19 @@ window is 90 days, and no command deletes platform events.
 ## Incident workspace
 
 Open `http://127.0.0.1:8000/ui` on the Docker Desktop host and enter the
-platform API key. The read-only page lists incidents, normalized event evidence,
+platform API key. The page lists incidents, normalized event evidence,
 signals, and lifecycle transitions, including the analyst name on attributed
-close actions. It calls the same authenticated API; the
+close actions. For an open incident, review its evidence, enter your analyst
+key, and choose **Close incident**. Confirm the incident ID in the prompt.
+The close request requires both keys in analyst mode; it clears the analyst
+key field after submission and refreshes the incident and its history. It calls
+the same authenticated API; the platform
 key stays only in page memory and is cleared when you leave or choose **Forget
 key**. It is never placed in a URL or browser storage. Keep the loopback bind
 and do not share the key. The page shows 20 incidents or events at a time and
 the first 100 lifecycle transitions for a selected incident. Refresh to see
-new alerts. The shared API key does not identify individual analysts, so the
-page has no action controls.
+new alerts. Enable analyst-key mode before using the close control so actions
+are attributed; the shared API key alone does not identify an individual.
 
 ## Forward Wazuh alerts
 
