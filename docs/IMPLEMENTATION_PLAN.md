@@ -35,7 +35,8 @@
   round trips on long connected authentication runs.
 - Authenticated retention preview counts older incident evidence, shadow-signal
   evidence, unlinked correlatable activity, and other unlinked events without
-  modifying stored records.
+  modifying stored records; its top-rule breakdown helps inspect the unlinked
+  remainder before choosing a policy.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.

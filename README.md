@@ -38,7 +38,10 @@ without either, and other older events. The categories do not overlap.
 The cutoff must include a timezone and is exclusive. This is a planning
 inventory, not a list of records safe to delete; even unlinked alerts may be
 useful for later investigations or late correlation. No retention deletion
-is enabled.
+is enabled. The response also includes the 20 most frequent source/category/
+rule combinations among older unlinked other events. This breakdown is
+aggregate and may cover fewer events than the `unlinked_other` total when
+there are more than 20 distinct combinations.
 `POST /v1/incidents/{incident_id}/close` closes an incident. A newly ingested
 failure with an event time later than the incident's previous last-seen time
 reopens it; older evidence leaves it closed. Repeated closes are idempotent.
