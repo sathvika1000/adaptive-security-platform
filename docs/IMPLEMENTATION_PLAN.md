@@ -78,6 +78,9 @@
   per-request analyst key, clears that field, and refreshes visible history.
 - Analyst keys can explicitly grant or withhold close permission while legacy
   string keys retain that permission; identity reports the allowed action.
+- Optional detailed evaluation reports identify detected, missed, and benign
+  lookalike cases without event telemetry; runnable synthetic examples cover
+  both authentication signals and preserve aggregate-only default output.
 - Wazuh 4.14.8 single-node manager, indexer, and dashboard run on Apple Silicon Docker
   Desktop with loopback-only ports. SCA and manager-decoded synthetic SSH alerts
   reached the API; two SSH failures produced a durable incident.
