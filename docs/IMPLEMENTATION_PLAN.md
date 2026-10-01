@@ -114,3 +114,16 @@
    samples before considering shadow signal promotion.
 
 Keep deterministic detection and evidence traceability through each slice.
+
+## Captured OTRF telemetry milestone
+
+- Checksum-pinned PurpleSharp host import preserves all 25,993 inspected records,
+  provider-scoped mappings, timestamps, endpoint identities, and raw evidence references.
+- Isolated production replay plus an offline cross-account password-spray detector
+  produced one seven-event candidate on the inspected capture. A separate findings
+  database supports UI evidence inspection without changing live per-user assignments.
+- Publisher-documented spray case and per-case evaluator support are available;
+  background remains unlabeled. Synthetic regressions test boundaries and isolation.
+- Next: held-out attack captures and benign lookalikes; network capture import;
+  ticket/share/remote-execution detection and cross-category relationships. Live spray
+  ingestion and real-world accuracy remain unimplemented/unmeasured.
