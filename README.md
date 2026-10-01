@@ -374,3 +374,17 @@ Close transition history identifies an analyst when analyst-key mode is enabled;
 older and automated transitions have no actor. Event retention remains future
 work. Deploy behind TLS and network controls; the shared API key plus optional
 analyst keys are a POC boundary, not a multi-user authorization system.
+
+### OTRF captured attack replay
+
+Import and replay the checksum-pinned PurpleSharp Windows host capture in isolation:
+
+```sh
+python -m adaptive_security.otrf_replay artifacts/otrf-playbook-1
+```
+
+This preserves all raw records and produces an inventory, production replay database,
+separate UI-compatible password-spray findings database, evidence timeline, and a narrow
+publisher-documented attack case. The new `auth.password_spray` detector is offline batch
+only; no live detection settings change. See [the OTRF evaluation guide](docs/OTRF_EVALUATION.md)
+for Mac commands, UI inspection on port 8001, labels, and coverage limits.
