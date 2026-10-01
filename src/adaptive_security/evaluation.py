@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Literal
@@ -27,14 +27,32 @@ class EvaluationSummary(BaseModel):
     recall: float | None
 
 
-def evaluate(
-    cases: Iterable[EvaluationCase], rule_id: Literal[
-        "auth.failures_then_success", "auth.novel_source_ip"
-    ] = "auth.failures_then_success"
-) -> EvaluationSummary:
-    counts = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
+EvaluationRule = Literal["auth.failures_then_success", "auth.novel_source_ip"]
+EvaluationVerdict = Literal["true_positive", "false_positive", "true_negative", "false_negative"]
+
+
+class EvaluationCaseResult(BaseModel):
+    case_id: str
+    label: Literal["malicious", "benign"]
+    detected: bool
+    verdict: EvaluationVerdict
+
+
+class EvaluationReport(BaseModel):
+    rule_id: EvaluationRule
+    summary: EvaluationSummary
+    cases: tuple[EvaluationCaseResult, ...]
+
+
+def _case_results(
+    cases: Iterable[EvaluationCase], rule_id: EvaluationRule
+) -> Iterator[EvaluationCaseResult]:
+    seen: set[str] = set()
     with TemporaryDirectory() as directory:
         for number, case in enumerate(cases):
+            if case.case_id in seen:
+                raise ValueError("duplicate case ID")
+            seen.add(case.case_id)
             store = SQLiteStore(str(Path(directory) / f"case-{number}.db"))
             service = IngestionService(store)
             for event in case.events:
@@ -42,18 +60,39 @@ def evaluate(
             signals = (store.event_signals() if rule_id == "auth.novel_source_ip" else
                        [signal for incident in store.incidents() for signal in incident.signals])
             detected = any(signal.rule_id == rule_id for signal in signals)
+            verdict: EvaluationVerdict
             if detected:
-                counts["tp" if case.label == "malicious" else "fp"] += 1
+                verdict = "true_positive" if case.label == "malicious" else "false_positive"
             else:
-                counts["fn" if case.label == "malicious" else "tn"] += 1
+                verdict = "false_negative" if case.label == "malicious" else "true_negative"
+            yield EvaluationCaseResult(
+                case_id=case.case_id, label=case.label, detected=detected, verdict=verdict
+            )
 
-    predicted = counts["tp"] + counts["fp"]
-    malicious = counts["tp"] + counts["fn"]
-    return EvaluationSummary(
-        true_positive=counts["tp"],
-        false_positive=counts["fp"],
-        true_negative=counts["tn"],
-        false_negative=counts["fn"],
-        precision=counts["tp"] / predicted if predicted else None,
-        recall=counts["tp"] / malicious if malicious else None,
+
+def _summary(results: Iterable[EvaluationCaseResult]) -> EvaluationSummary:
+    counts = dict.fromkeys(
+        ("true_positive", "false_positive", "true_negative", "false_negative"), 0
     )
+    for result in results:
+        counts[result.verdict] += 1
+    predicted = counts["true_positive"] + counts["false_positive"]
+    malicious = counts["true_positive"] + counts["false_negative"]
+    return EvaluationSummary(
+        **counts,
+        precision=counts["true_positive"] / predicted if predicted else None,
+        recall=counts["true_positive"] / malicious if malicious else None,
+    )
+
+
+def evaluate(
+    cases: Iterable[EvaluationCase], rule_id: EvaluationRule = "auth.failures_then_success"
+) -> EvaluationSummary:
+    return _summary(_case_results(cases, rule_id))
+
+
+def evaluate_report(
+    cases: Iterable[EvaluationCase], rule_id: EvaluationRule = "auth.failures_then_success"
+) -> EvaluationReport:
+    results = tuple(_case_results(cases, rule_id))
+    return EvaluationReport(rule_id=rule_id, summary=_summary(results), cases=results)
