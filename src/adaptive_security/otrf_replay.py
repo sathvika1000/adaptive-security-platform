@@ -140,12 +140,14 @@ def replay(capture: Path, destination: Path) -> dict[str, object]:
                 for event in ordered:
                     if (incident.first_seen - timedelta(seconds=30) <= event.event_time
                             <= incident.last_seen + timedelta(minutes=2)
-                            and any(e.type == "host" and e.value in hosts for e in event.entities)
                             and event.action is not None):
                         timeline.write(json.dumps({
                             "incident_id": incident.incident_id, "event_id": event.event_id,
                             "event_time": event.event_time.isoformat(), "action": event.action,
                             "evidence": event.event_id in incident.event_ids,
+                            "association": ("same_endpoint" if any(
+                                e.type == "host" and e.value in hosts for e in event.entities
+                            ) else "capture_context"),
                             "raw_member": MEMBER, "raw_line": event.attributes["raw_line"],
                         }) + "\n")
         for file in output.iterdir():
