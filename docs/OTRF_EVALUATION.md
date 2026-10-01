@@ -65,7 +65,7 @@ forwarder at it. The fuller supporting timeline is in `timeline.jsonl`.
 | `findings.db` | Separate UI-compatible database containing batch spray findings |
 | `spray-incidents.jsonl` | Candidate incidents and exact evidence IDs |
 | `attack-case.jsonl` | Only the seven failures in the publisher-documented attack case |
-| `timeline.jsonl` | Mapped host telemetry from 30 seconds before to two minutes after findings |
+| `timeline.jsonl` | Mapped capture telemetry from 30 seconds before to two minutes after findings |
 | `report.json` | Provenance, inventory, mapping coverage, missingness, and case verdict |
 
 Output files have owner-only permissions. References to ZIP member and physical line
@@ -102,7 +102,9 @@ telemetry. Unmapped Windows events remain `other` with their raw data preserved.
 - Novel-IP detection requires baseline successes and valid IPs; this capture does not
   provide a labeled accuracy test for that detector. Ticket requests, shares, processes,
   network connections, and DNS are preserved; Kerberoasting and WinRM detection are
-  not yet implemented. Context around a finding does not prove causal relationships.
+  not yet implemented. Context around a finding does not prove causal relationships. Timeline records
+  distinguish `same_endpoint` from `capture_context`; domain-controller ticket/share
+  activity is included as context, not automatically labeled attack evidence.
 - The network ZIP is a separate capture and is not yet imported. Host and network
   correlation, held-out captures, and representative benign evaluation are next steps.
 - The automated regression suite uses explicitly synthetic minimal records to check
