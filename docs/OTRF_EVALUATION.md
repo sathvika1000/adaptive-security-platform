@@ -50,7 +50,7 @@ ASP_DB_PATH=artifacts/otrf-playbook-1/findings.db \
   python -m uvicorn adaptive_security.api:app --host 127.0.0.1 --port 8001
 ```
 
-Open http://127.0.0.1:8001 and enter your existing platform API key. Select **Possible
+Open http://127.0.0.1:8001/ui and enter your existing platform API key. Select **Possible
 password spraying** to inspect its seven evidence events. Stop this second app with
 Ctrl+C. This database is an offline investigation artifact; do not point a live
 forwarder at it. The fuller supporting timeline is in `timeline.jsonl`.
