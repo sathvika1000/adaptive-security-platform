@@ -123,19 +123,25 @@ def test_isolated_replay_artifacts(tmp_path: Path, monkeypatch):
         archive.writestr(module.MEMBER, "\n".join(
             json.dumps(record(TargetUserName=f"user{n}", WorkstationName="WORKSTATION5"))
             for n in range(7)
-        ))
+        ) + "\n" + json.dumps(record(EventID=4769, Hostname="dc.local",
+                                      EventTime="2020-10-22 04:29:54")))
     monkeypatch.setattr(module, "SHA256", hashlib.sha256(capture.read_bytes()).hexdigest())
     destination = tmp_path / "results"
     report = module.replay(capture, destination)
     assert report["password_spray_candidates"] == 1
-    assert report["normalized_events"] == 7
+    assert report["normalized_events"] == 8
     assert report["production_auth_incidents"] == 0
     store = SQLiteStore(str(destination / "findings.db"))
     incident = store.incidents()[0]
     assert len(incident.event_ids) == 7
     assert (destination / "capture.zip").read_bytes() == capture.read_bytes()
-    assert len((destination / "events.jsonl").read_text().splitlines()) == 7
-    assert len((destination / "timeline.jsonl").read_text().splitlines()) == 7
+    assert len((destination / "events.jsonl").read_text().splitlines()) == 8
+    timeline = [json.loads(line) for line in
+                (destination / "timeline.jsonl").read_text().splitlines()]
+    assert len(timeline) == 8
+    assert timeline[-1]["association"] == "capture_context"
+    assert timeline[-1]["action"] == "service_ticket_request"
+    assert not timeline[-1]["evidence"]
     case = EvaluationCase.model_validate_json((destination / "attack-case.jsonl").read_text())
     assert evaluate_report([case], "auth.password_spray").summary.true_positive == 1
     assert destination.stat().st_mode & 0o777 == 0o700
