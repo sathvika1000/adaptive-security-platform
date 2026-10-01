@@ -30,7 +30,8 @@ def load_cases(path: Path) -> Iterator[EvaluationCase]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate an authentication signal")
     parser.add_argument("cases", type=Path, help="JSONL file of labeled canonical event cases")
-    parser.add_argument("--rule", choices=("auth.failures_then_success", "auth.novel_source_ip"),
+    parser.add_argument("--rule", choices=("auth.failures_then_success", "auth.novel_source_ip",
+                                       "auth.password_spray"),
                         default="auth.failures_then_success")
     parser.add_argument("--details", action="store_true",
                         help="include case IDs, labels, predictions, and verdicts; no event data")
