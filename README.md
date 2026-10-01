@@ -319,12 +319,33 @@ examples). Run `python scripts/evaluate_signal.py cases.jsonl`.
 Cases are isolated in separate temporary databases and processed through the
 normal ingestion and incident path. The output counts case-level true/false
 positives and negatives and computes precision and recall when defined.
-It prints only aggregate counts; use deidentified, permissioned examples.
+It prints only aggregate counts by default; use deidentified, permissioned examples.
 Synthetic cases test the evaluation contract, not real-world detection quality.
 Pass `--rule auth.novel_source_ip` to evaluate the shadow rule. Its case-level
 counts include persisted shadow observations even if success-only cases never
 formed an incident. Labels must account for benign first-seen IPs and the
 five-success cold start; synthetic fixtures alone cannot justify promotion.
+
+Add `--details` to include one result per case: its ID, label, detected flag,
+and true/false positive/negative verdict. The report also identifies the selected
+rule and includes the same aggregate summary. It omits event bodies, users,
+hosts, IPs, and evidence IDs; use non-sensitive case IDs because they appear
+in detailed output. Duplicate case IDs are rejected to avoid ambiguous results.
+Evaluation creates isolated temporary databases and does not use the live store.
+
+Runnable synthetic examples cover a detected attack, a benign lookalike, a
+benign non-match, and a missed attack for each rule:
+
+```sh
+python scripts/evaluate_signal.py examples/evaluation/auth-sequence.synthetic.jsonl --details
+python scripts/evaluate_signal.py examples/evaluation/auth-novel-source.synthetic.jsonl \
+  --rule auth.novel_source_ip --details
+```
+
+Each example deliberately yields one case in each verdict category. The
+resulting 0.5 precision and recall illustrate known limitations, not measured
+production performance. Replace these fixtures with permissioned, labeled
+samples before deciding whether a signal should be promoted.
 
 The POC indexes authentication events by user/host and event time. Each new
 event walks indexed neighbors in pages of 128 only within its connected
