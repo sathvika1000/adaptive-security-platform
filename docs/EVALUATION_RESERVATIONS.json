@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "reserved_at": "2026-10-04T10:07:04.602716+00:00",
+  "frozen_rule_commit": "2f8ec98a024e31205e945b2613128c80d059f5b7",
+  "rule_sha256": {
+    "src/adaptive_security/detection/password_spray.py": "e88721afce9ad8b0522768ae751c204332b8218b75bcf5822d0aaf5d4dd925c6",
+    "src/adaptive_security/detection/rc4_tickets.py": "5248aedbf6a549ebe74fd66cda99f2bbe223ce350359439349a517c3d6f6a116"
+  },
+  "rule_id": "auth.password_spray",
+  "partition": "held_out",
+  "label": "malicious",
+  "label_scope": "Each publisher-designated capture is a case containing password spraying; individual/background records are not labeled.",
+  "captures": [
+    {
+      "capture_id": "deepblue-password-spray",
+      "repository": "sans-blue-team/DeepBlueCLI",
+      "source_commit": "2eecc65698e8666408ece67525577c895676d579",
+      "path": "evtx/password-spray.evtx",
+      "git_blob_sha": "ca8929494da8bbaf12ef2f643c69d5cc4b141bf7",
+      "label_reference": "https://github.com/sans-blue-team/DeepBlueCLI/tree/2eecc65698e8666408ece67525577c895676d579#examples"
+    },
+    {
+      "capture_id": "evtx-attack-kerberos-spray",
+      "repository": "sbousseaden/EVTX-ATTACK-SAMPLES",
+      "source_commit": "4ceed2f4706daf601c212a8f91c113dd85349a2c",
+      "path": "Credential Access/kerberos_pwd_spray_4771.evtx",
+      "git_blob_sha": "631e2c5b27df12dc621032b035ddaea01399c6a5",
+      "label_reference": "https://github.com/sbousseaden/EVTX-ATTACK-SAMPLES/blob/4ceed2f4706daf601c212a8f91c113dd85349a2c/Credential%20Access/kerberos_pwd_spray_4771.evtx"
+    }
+  ]
+}
