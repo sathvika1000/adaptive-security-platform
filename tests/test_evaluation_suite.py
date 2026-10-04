@@ -1,13 +1,27 @@
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
+from adaptive_security.domain.events import EntityRef, EventCategory, SecurityEvent
+from adaptive_security.evaluation import EvaluationCase
 from adaptive_security.evaluation_suite import evaluate_suite
-from tests.test_evaluation import case
+
+
+def case(case_id: str, label: str, sequence: list[tuple[int, str]]) -> EvaluationCase:
+    start = datetime(2026, 9, 27, tzinfo=UTC)
+    events = [SecurityEvent(
+        event_id=str(number), source="wazuh", category=EventCategory.AUTHENTICATION,
+        event_time=start + timedelta(minutes=minute),
+        observed_time=start + timedelta(minutes=minute, seconds=1),
+        outcome=outcome, severity=5,
+        entities=(EntityRef(type="user", value="alice"), EntityRef(type="host", value="web-01")),
+    ) for number, (minute, outcome) in enumerate(sequence)]
+    return EvaluationCase.model_validate({"case_id": case_id, "label": label, "events": events})
 
 
 def dataset(tmp_path: Path, name: str, partition: str = "development",
