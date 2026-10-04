@@ -163,3 +163,9 @@ complete local EVTX exports and explicit malicious/benign/unlabeled review decla
 inspected captures cannot be declared held out; unknown activity is excluded from accuracy metrics.
 Representative benign exports and fresh labeled attack captures are still needed; the workflow does
 not imply production accuracy or enable live rules. See [local validation](LOCAL_CAPTURE_VALIDATION.md).
+
+Windows input collection now has a bounded read-only Security-log exporter, metadata/checksum sidecar,
+and private EVTX preparation command. No auditing changes, generated attacks or automatic benign
+labels are included. Native Windows CI exports existing logs and verifies Python record preservation;
+this integration check does not complete representative benign or fresh labeled attack validation.
+See [Windows collection](WINDOWS_CAPTURE_COLLECTION.md) for the Windows-to-Mac workflow.

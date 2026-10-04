@@ -33,3 +33,16 @@ jobs:
           docker compose -p asp-wazuh \
             -f /tmp/asp-wazuh-docker/single-node/docker-compose.yml \
             -f deploy/wazuh-loopback.yaml config --quiet
+
+  windows-export:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[evtx]"
+      - name: Check native Windows Security capture export
+        shell: powershell
+        run: ./scripts/test_windows_validation_export.ps1

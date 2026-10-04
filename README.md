@@ -417,3 +417,7 @@ For fresh Windows authentication exports, the
 [local capture validation workflow](docs/LOCAL_CAPTURE_VALIDATION.md) freezes implementation and
 input hashes, requires explicit review metadata for labeled captures, and keeps unlabeled activity
 out of accuracy calculations. Representative benign validation is still pending.
+
+A read-only [Windows collection guide](docs/WINDOWS_CAPTURE_COLLECTION.md) now includes a native
+Security-log export script and a Mac/Linux preparation command. Both preserve collection provenance
+and create unlabeled development inputs; Windows CI verifies the export-to-Python workflow.
