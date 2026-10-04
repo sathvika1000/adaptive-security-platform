@@ -16,6 +16,12 @@ from adaptive_security.connectors.otrf import normalize
 from adaptive_security.detection.password_spray import detect_password_spray
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.evaluation import EvaluationCase
+from adaptive_security.otrf_network import (
+    NETWORK_SHA256,
+    NETWORK_URL,
+    link_network,
+    load_network,
+)
 from adaptive_security.service import IngestionService
 from adaptive_security.store import SQLiteStore
 
@@ -51,16 +57,21 @@ def load_capture(path: Path) -> tuple[list[SecurityEvent], dict[str, int]]:
     return events, dict(sorted(inventory.items()))
 
 
-def replay(capture: Path, destination: Path) -> dict[str, object]:
+def replay(capture: Path, destination: Path,
+           network_capture: Path | None = None) -> dict[str, object]:
     """Create a new directory atomically; refuse existing destinations."""
     if destination.exists():
         raise ValueError("output already exists; choose a new directory")
     events, inventory = load_capture(capture)
+    network_events, network_inventory = (load_network(network_capture)
+                                         if network_capture else ([], {}))
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".otrf-", dir=destination.parent) as temporary:
         output = Path(temporary) / "result"
         output.mkdir(mode=0o700)
         shutil.copyfile(capture, output / "capture.zip")
+        if network_capture:
+            shutil.copyfile(network_capture, output / "network-capture.zip")
         store = SQLiteStore(str(output / "replay.db"))
         service = IngestionService(store)
         ordered = sorted(events, key=lambda e: (
@@ -71,10 +82,22 @@ def replay(capture: Path, destination: Path) -> dict[str, object]:
                 normalized.write(event.model_dump_json() + "\n")
                 service.ingest(event)
         spray = detect_password_spray(ordered)
+        linked = {}
+        enriched = []
+        for incident in spray:
+            incident, matches = link_network(incident, ordered, network_events)
+            enriched.append(incident)
+            linked.update({event.event_id: event for event in matches})
+        spray = tuple(enriched)
+        network_events = [linked.get(event.event_id, event) for event in network_events]
+        if network_capture:
+            with (output / "network-events.jsonl").open("x", encoding="utf-8") as target:
+                for event in network_events:
+                    target.write(event.model_dump_json() + "\n")
         finding_store = SQLiteStore(str(output / "findings.db"))
         by_id = {event.event_id: event for event in ordered}
         with finding_store.transaction() as conn:
-            for event in ordered:
+            for event in [*ordered, *network_events]:
                 finding_store.put_event(conn, event)
             for incident in spray:
                 members: list[tuple[SecurityEvent, str | None]] = [
@@ -101,6 +124,10 @@ def replay(capture: Path, destination: Path) -> dict[str, object]:
             "source_url": URL, "documentation": DOCUMENTATION, "capture_sha256": SHA256,
             "raw_records": len(events), "normalized_events": len(events),
             "inventory": inventory,
+            "network_inventory": network_inventory,
+            "network_context_events": len(linked),
+            "network_source_url": NETWORK_URL if network_capture else None,
+            "network_capture_sha256": NETWORK_SHA256 if network_capture else None,
             "time_policy": "Sysmon UtcTime; otherwise EventTime in America/New_York. "
                            "@timestamp is observation time, not event time.",
             "category_counts": dict(Counter(e.category.value for e in events)),
@@ -160,6 +187,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path, help="new isolated output directory")
     parser.add_argument("--capture", type=Path, help="existing pinned host ZIP; otherwise download")
+    parser.add_argument("--with-network", action="store_true", help="download paired network ZIP")
+    parser.add_argument("--network-capture", type=Path, help="existing paired pinned network ZIP")
     args = parser.parse_args()
     try:
         if args.output.exists():
@@ -170,7 +199,13 @@ def main() -> None:
                 capture = Path(directory) / "capture.zip"
                 with urlopen(URL, timeout=60) as response, capture.open("wb") as target:
                     shutil.copyfileobj(response, target)
-            report = replay(capture, args.output)
+            network_capture = args.network_capture
+            if args.with_network and network_capture is None:
+                network_capture = Path(directory) / "network.zip"
+                with (urlopen(NETWORK_URL, timeout=60) as response,
+                      network_capture.open("wb") as target):
+                    shutil.copyfileobj(response, target)
+            report = replay(capture, args.output, network_capture)
         print(json.dumps({"output": str(args.output), "records": report["normalized_events"],
                           "evaluation": report["evaluation"]}, indent=2))
     except (OSError, ValueError, zipfile.BadZipFile) as error:
