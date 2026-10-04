@@ -13,6 +13,20 @@ def _text(value: Any) -> str | None:
     return str(value) if value not in (None, "", "-", "N/A") else None
 
 
+def _code(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, str):
+        try:
+            parsed = int(value, 16 if value.lower().startswith("0x") else 10)
+            return parsed if parsed >= 0 else None
+        except ValueError:
+            pass
+    return None
+
+
 def normalize(record: dict[str, Any], *, capture_sha256: str, member: str,
               line: int, timezone: str) -> SecurityEvent:
     channel = str(record.get("Channel", ""))
@@ -86,6 +100,14 @@ def normalize(record: dict[str, Any], *, capture_sha256: str, member: str,
     if workstation:
         entities.append(EntityRef(type="source_host", value=workstation))
     identifier = sha256(f"{capture_sha256}:{member}:{line}".encode()).hexdigest()
+    ticket = {}
+    if channel == "Security" and event_id == 4769:
+        service = _text(record.get("ServiceName"))
+        ticket = {"service_name": service,
+                  "ticket_encryption_type": _code(record.get("TicketEncryptionType")),
+                  "ticket_status": _code(record.get("Status"))}
+        if service:
+            entities.append(EntityRef(type="service_account", value=service))
     return SecurityEvent(
         event_id=identifier, source="otrf", category=category, event_time=event_time,
         observed_time=observed, action=action, outcome=outcome, source_ip=source_ip,
@@ -93,5 +115,6 @@ def normalize(record: dict[str, Any], *, capture_sha256: str, member: str,
             "capture_sha256": capture_sha256, "raw_member": member, "raw_line": line,
             "windows_event_id": event_id, "channel": channel, "time_basis": time_basis,
             "source_workstation": workstation, "raw": record,
+            **ticket,
         },
     )

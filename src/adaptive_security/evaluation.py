@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from adaptive_security.detection.password_spray import detect_password_spray
+from adaptive_security.detection.rc4_tickets import detect_rc4_tickets
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.service import IngestionService
 from adaptive_security.store import SQLiteStore
@@ -29,7 +30,8 @@ class EvaluationSummary(BaseModel):
 
 
 EvaluationRule = Literal[
-    "auth.failures_then_success", "auth.novel_source_ip", "auth.password_spray"
+    "auth.failures_then_success", "auth.novel_source_ip", "auth.password_spray",
+    "auth.rc4_service_ticket_burst",
 ]
 EvaluationVerdict = Literal["true_positive", "false_positive", "true_negative", "false_negative"]
 
@@ -64,6 +66,9 @@ def _case_results(
                        [signal for incident in store.incidents() for signal in incident.signals])
             if rule_id == "auth.password_spray":
                 signals = [signal for incident in detect_password_spray(list(case.events))
+                           for signal in incident.signals]
+            elif rule_id == "auth.rc4_service_ticket_burst":
+                signals = [signal for incident in detect_rc4_tickets(list(case.events))
                            for signal in incident.signals]
             detected = any(signal.rule_id == rule_id for signal in signals)
             verdict: EvaluationVerdict

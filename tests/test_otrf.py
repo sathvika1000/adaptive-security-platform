@@ -124,24 +124,37 @@ def test_isolated_replay_artifacts(tmp_path: Path, monkeypatch):
             json.dumps(record(TargetUserName=f"user{n}", WorkstationName="WORKSTATION5"))
             for n in range(7)
         ) + "\n" + json.dumps(record(EventID=4769, Hostname="dc.local",
-                                      EventTime="2020-10-22 04:29:54")))
+                                      EventTime="2020-10-22 04:29:54")) + "\n" + "\n".join(
+            json.dumps(record(EventID=4769, Hostname="MORDORDC.theshire.local",
+                              EventTime="2020-10-22 04:29:54", Status="0x0",
+                              TicketEncryptionType="0x17", ServiceName=service,
+                              TargetUserName="pgustavo@THESHIRE.LOCAL",
+                              IpAddress="::ffff:172.18.39.5"))
+            for service in ("sysmonsvc", "nxlogsvc", "defensesvc", "otrsvc", "mordorsvc")
+        ))
     monkeypatch.setattr(module, "SHA256", hashlib.sha256(capture.read_bytes()).hexdigest())
     destination = tmp_path / "results"
     report = module.replay(capture, destination)
     assert report["password_spray_candidates"] == 1
-    assert report["normalized_events"] == 8
+    assert report["normalized_events"] == 13
+    assert report["rc4_ticket_candidates"] == 1
     assert report["production_auth_incidents"] == 0
     store = SQLiteStore(str(destination / "findings.db"))
-    incident = store.incidents()[0]
+    incident = next(i for i in store.incidents() if i.incident_id.startswith("spray-"))
     assert len(incident.event_ids) == 7
+    ticket_incident = next(i for i in store.incidents() if i.incident_id.startswith("tgs-"))
+    assert len(ticket_incident.event_ids) == 5
+    assert not set(incident.event_ids) & set(ticket_incident.event_ids)
     assert (destination / "capture.zip").read_bytes() == capture.read_bytes()
-    assert len((destination / "events.jsonl").read_text().splitlines()) == 8
+    assert len((destination / "events.jsonl").read_text().splitlines()) == 13
     timeline = [json.loads(line) for line in
                 (destination / "timeline.jsonl").read_text().splitlines()]
-    assert len(timeline) == 8
-    assert timeline[-1]["association"] == "capture_context"
-    assert timeline[-1]["action"] == "service_ticket_request"
-    assert not timeline[-1]["evidence"]
+    assert len(timeline) == 26
+    background = [row for row in timeline if row["raw_line"] == 8]
+    assert len(background) == 2
+    assert all(row["association"] == "capture_context" for row in background)
+    assert all(row["action"] == "service_ticket_request" for row in background)
+    assert all(not row["evidence"] for row in background)
     case = EvaluationCase.model_validate_json((destination / "attack-case.jsonl").read_text())
     assert evaluate_report([case], "auth.password_spray").summary.true_positive == 1
     from adaptive_security.evaluation_suite import evaluate_suite
@@ -153,6 +166,10 @@ def test_isolated_replay_artifacts(tmp_path: Path, monkeypatch):
     assert result["summary"]["true_positive"] == 1
     assert result["summary"]["precision"] is None
     assert result["summary"]["recall"] is None
+    ticket_suite = evaluate_suite(destination / "rc4-ticket-suite.json")
+    assert ticket_suite["datasets"][0]["summary"]["true_positive"] == 1
+    assert ticket_suite["datasets"][0]["summary"]["precision"] is None
+    assert ticket_suite["datasets"][0]["dataset"]["partition"] == "development"
     assert (destination / "evaluation-suite.json").stat().st_mode & 0o777 == 0o600
     assert destination.stat().st_mode & 0o777 == 0o700
     with pytest.raises(ValueError, match="exists"):

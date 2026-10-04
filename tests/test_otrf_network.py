@@ -147,3 +147,19 @@ def test_context_is_protected_from_unlinked_archives(tmp_path: Path):
     assert preview.incident_evidence == 1
     assert preview.unlinked_other == 0
     assert list(_candidates(Path(store.path), '2021-01-01T00:00:00+00:00')) == []
+
+
+def test_shared_network_context_preserves_both_investigation_anchors():
+    from adaptive_security.otrf_replay import _merge_context
+
+    first = network_event().model_copy(update={"attributes": {
+        **network_event().attributes, "matched_host_event_ids": ["workstation-anchor"]}})
+    second = first.model_copy(update={"attributes": {
+        **first.attributes, "matched_host_event_ids": ["controller-anchor"]}})
+    linked = {}
+    _merge_context(linked, first, "spray")
+    _merge_context(linked, second, "ticket")
+    _merge_context(linked, second, "ticket")
+    attrs = linked[first.event_id].attributes
+    assert attrs["matched_host_event_ids"] == ["controller-anchor", "workstation-anchor"]
+    assert attrs["matched_incident_ids"] == ["spray", "ticket"]

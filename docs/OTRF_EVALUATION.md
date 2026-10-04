@@ -2,7 +2,8 @@
 
 This workflow imports the OTRF PurpleSharp Active Directory Playbook I **host capture**,
 replays every record through production ingestion in isolation, and builds a separate
-password-spray investigation. It never calls the live API or opens the live database.
+password-spray and RC4 service-ticket investigations. It never calls the live API or opens
+the live database.
 
 ## Run on the Mac
 
@@ -34,7 +35,8 @@ python scripts/evaluate_signal.py artifacts/otrf-playbook-1/attack-case.jsonl \
 ```
 
 Expected inspected capture: 25,993 records, seven documented logon failures, one
-password-spray candidate, and zero incidents from the current per-user correlation
+password-spray candidate, one five-event RC4 ticket candidate, and zero incidents from
+the current per-user correlation
 pipeline. These are development observations, not a production accuracy estimate.
 
 ## Inspect the incident in our UI
@@ -66,6 +68,9 @@ forwarder at it. The fuller supporting timeline is in `timeline.jsonl`.
 | `spray-incidents.jsonl` | Candidate incidents and exact evidence IDs |
 | `attack-case.jsonl` | Only the seven failures in the publisher-documented attack case |
 | `evaluation-suite.json` | Checksum-pinned development case and capture provenance |
+| `rc4-ticket-incidents.jsonl` | Offline RC4 ticket-burst candidates and evidence IDs |
+| `rc4-ticket-case.jsonl` | Five ticket records tied to the documented T1558.003 simulation |
+| `rc4-ticket-suite.json` | Separate checksum-pinned ticket development evaluation |
 | `timeline.jsonl` | Mapped capture telemetry from 30 seconds before to two minutes after findings |
 | `report.json` | Provenance, inventory, mapping coverage, missingness, and case verdict |
 
@@ -102,8 +107,9 @@ telemetry. Unmapped Windows events remain `other` with their raw data preserved.
   The capture report deliberately leaves those metrics null.
 - Novel-IP detection requires baseline successes and valid IPs; this capture does not
   provide a labeled accuracy test for that detector. Ticket requests, shares, processes,
-  network connections, and DNS are preserved; Kerberoasting and WinRM detection are
-  not yet implemented. Context around a finding does not prove causal relationships. Timeline records
+  network connections, and DNS are preserved. An offline RC4 ticket-burst candidate now
+  covers a narrow Kerberoasting pattern; WinRM detection remains unimplemented.
+  Context around a finding does not prove causal relationships. Timeline records
   distinguish `same_endpoint` from `capture_context`; domain-controller ticket/share
   activity is included as context, not automatically labeled attack evidence.
 - The network ZIP is a separate, optional capture with conservative metadata links
@@ -158,8 +164,10 @@ and its fallback is explicitly recorded.
 Context linking requires a nearby Sysmon network event on the incident endpoint,
 an exact directed source/destination address, source/destination port, and protocol
 match, and a packet-time overlap within two seconds. Host anchors are restricted to
-30 seconds before through two minutes after the finding. The inspected capture yields
-45 matched buckets. Each retains packet numbers and matching host event IDs. Shared IP
+30 seconds before through two minutes after the finding. The spray investigation retains
+45 matched buckets, and the ticket investigation has 39; their union is 52 buckets.
+Shared buckets retain the host-anchor IDs and investigation IDs from both findings.
+Each retains packet numbers and matching host event IDs. Shared IP
 or temporal proximity alone cannot create a link. These are metadata relationships,
 not proof of maliciousness, successful compromise, or packet-level user attribution.
 
@@ -229,3 +237,50 @@ excluded, rather than receiving an inferred benign label. Counts and metrics des
 the supplied cases, not attack-level localization or enterprise false-alert rates. A
 dataset with both benign and malicious cases still needs representative sampling before
 its metrics support a product claim. No new held-out or benign capture is supplied here.
+
+## RC4 service-ticket candidates
+
+New replays include **Suspicious RC4 service-ticket burst** alongside the password-spray
+incident. Its five evidence records are separate from the seven spray failures.
+The UI shows the service account, requester, issuing domain controller, client IP,
+ticket encryption, and ticket issuance status. Status is kept separate from logon
+outcome, so ticket issuance does not update production successful-login baselines.
+
+The batch rule `auth.rc4_service_ticket_burst` v1 requires successful Security event
+4769 requests with RC4-HMAC (`TicketEncryptionType` 0x17), an explicit requester and
+client IP, and at least five distinct service accounts within five minutes on one
+issuing domain controller. Machine service names ending in `$` and `krbtgt` are excluded.
+Duplicates by source/event identity do not count again. Unknown status, encryption,
+requester, client address, service, or controller cannot create a candidate.
+Grouping by controller is conservative and may miss requests distributed across DCs.
+The rule is offline only; it is not called by live ingestion.
+
+Publisher provenance: the [PurpleSharp simulation transcript](https://securitydatasets.com/notebooks/atomic/windows/lateral_movement/SDWIN-201022042947.html)
+lists five service-account requests during T1558.003. Those records from the existing
+development capture form the narrow attack case; surrounding records remain unlabeled.
+Field semantics follow [Microsoft event 4769 documentation](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4769).
+Service Name denotes the service account, rather than an SPN string. RC4 can result from
+legitimate legacy use; issuing a ticket does not prove extraction, password cracking,
+or compromise. AES-based, slow, and single-service attacks are outside this rule.
+
+```sh
+python -m adaptive_security.evaluation_suite \
+  artifacts/otrf-playbook-network/rc4-ticket-suite.json
+python -m adaptive_security.evaluation_suite examples/evaluation/rc4-tickets.suite.json
+python scripts/evaluate_signal.py \
+  artifacts/otrf-playbook-network/rc4-ticket-case.jsonl \
+  --rule auth.rc4_service_ticket_burst --details
+```
+
+Choose a new replay directory after updating to generate these artifacts. Existing
+findings databases do not gain ticket candidates automatically. Use the provenance-aware
+suite for captured reporting: it keeps precision and recall null for this single-label
+development case. The legacy evaluator retains its mathematical single-case metrics.
+
+### RC4 ticket candidate controls
+
+Six explicitly constructed cases cover an attack pattern, AES tickets, repeated requests
+for one service, failed requests, a benign legacy-app lookalike, and a slow attack. The
+expected counts are one true positive, three true negatives, one false positive, and one
+false negative. These controls illustrate behavior, not production accuracy. Additional
+reserved captures and permissioned representative benign cases remain required.
