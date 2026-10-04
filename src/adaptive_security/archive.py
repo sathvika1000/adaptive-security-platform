@@ -14,7 +14,7 @@ from typing import Any
 
 from adaptive_security.backup import verify_backup
 from adaptive_security.domain.events import SecurityEvent
-from adaptive_security.store import SQLiteStore
+from adaptive_security.store import CONTEXT_EXISTS_SQL, SQLiteStore
 
 CLASSIFICATION = "unlinked_other_v1"
 
@@ -40,8 +40,8 @@ def _before(value: datetime) -> str:
 def _candidates(snapshot: Path, cutoff: str) -> Iterator[str]:
     with closing(sqlite3.connect(snapshot.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
         cursor = conn.execute(
-            """SELECT e.body FROM events AS e
-               WHERE e.event_time < ? AND e.incident_id IS NULL
+            f"""SELECT e.body FROM events AS e
+               WHERE e.event_time < ? AND e.incident_id IS NULL AND NOT ({CONTEXT_EXISTS_SQL})
                  AND e.correlation_key IS NULL
                  AND NOT EXISTS (
                    SELECT 1 FROM event_signals AS s
@@ -214,9 +214,9 @@ def reconcile_archive(snapshot: Path, archive: Path, current: Path) -> dict[str,
                 conn.execute("INSERT INTO archived VALUES (?, ?, ?)",
                              (event.source, event.event_id, line[:-1]))
         unchanged, missing = conn.execute(
-            """SELECT
+            f"""SELECT
                 COALESCE(SUM(CASE WHEN e.source IS NOT NULL AND e.body = a.body
-                    AND e.event_time < ? AND e.incident_id IS NULL
+                    AND e.event_time < ? AND e.incident_id IS NULL AND NOT ({CONTEXT_EXISTS_SQL})
                     AND e.correlation_key IS NULL AND NOT EXISTS (
                         SELECT 1 FROM event_signals AS s
                         WHERE s.source = e.source AND s.event_id = e.event_id
@@ -228,8 +228,8 @@ def reconcile_archive(snapshot: Path, archive: Path, current: Path) -> dict[str,
         ).fetchone()
         changed = archived["count"] - unchanged - missing
         newly_eligible = conn.execute(
-            """SELECT COUNT(*) FROM events AS e
-               WHERE e.event_time < ? AND e.incident_id IS NULL
+            f"""SELECT COUNT(*) FROM events AS e
+               WHERE e.event_time < ? AND e.incident_id IS NULL AND NOT ({CONTEXT_EXISTS_SQL})
                  AND e.correlation_key IS NULL
                  AND NOT EXISTS (SELECT 1 FROM event_signals AS s
                                  WHERE s.source = e.source AND s.event_id = e.event_id)
