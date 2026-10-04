@@ -400,3 +400,10 @@ service accounts, client IP, and issuing domain controller. The offline
 legacy applications can trigger it. Ticket issuance does not prove cracking or compromise.
 Provenance-aware suites distinguish development captures from synthetic controls and
 leave performance metrics null for single-label captured cases. Live ingestion is unchanged.
+
+Two independent, reserved password-spray EVTX cases now provide a reproducible check of
+v1 coverage: both are missed because they contain explicit-credential or Kerberos
+preauthentication telemetry rather than the supported failed-logon records. Their
+original evidence is preserved, and the detector remains frozen. See
+[captured validation](docs/CAPTURED_VALIDATION.md) for results, optional dependencies,
+label limitations, and the remaining representative benign testing requirement.

@@ -144,3 +144,10 @@ Keep deterministic detection and evidence traceability through each slice.
   anchors (45 spray, 39 ticket buckets; 52 in their union).
   Live deployment, AES/slow/single-service detection, held-out
   evaluation, and representative benign measurements remain open.
+- Independent captured-case evaluation now reserves two publisher-designated EVTX
+  password-spray samples against frozen v1 detector digests. All 307 records are
+  preserved; both cases are misses due to unsupported 4648/4771 telemetry rather than
+  4625 logon failures. Positive-only metrics remain null. The reproducible optional
+  EVTX workflow and historical results are in `CAPTURED_VALIDATION.md`. Fresh captures
+  are required after using these results for development; representative benign and
+  RC4-ticket held-out validation remain open.
