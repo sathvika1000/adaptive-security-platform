@@ -105,11 +105,79 @@ telemetry. Unmapped Windows events remain `other` with their raw data preserved.
   not yet implemented. Context around a finding does not prove causal relationships. Timeline records
   distinguish `same_endpoint` from `capture_context`; domain-controller ticket/share
   activity is included as context, not automatically labeled attack evidence.
-- The network ZIP is a separate capture and is not yet imported. Host and network
-  correlation, held-out captures, and representative benign evaluation are next steps.
+- The network ZIP is a separate, optional capture with conservative metadata links
+  described below. Held-out captures and representative benign evaluation remain next steps.
 - The automated regression suite uses explicitly synthetic minimal records to check
   boundaries, duplicates, order, source separation, timestamp conversion, isolation,
   and evidence persistence. They are not presented as real capture measurements.
 
 Reserve entire additional captures for held-out evaluation before tuning further.
 Do not split adjacent events from this development simulation into train/test sets.
+
+## Paired host and network investigation
+
+To create a **new** isolated replay with the paired network capture:
+
+```sh
+cd ~/adaptive-security-platform
+git pull --ff-only
+source .venv/bin/activate
+python -m pip install -e .
+python -m adaptive_security.otrf_replay artifacts/otrf-playbook-network \
+  --capture artifacts/otrf-playbook-1/capture.zip --with-network
+```
+
+Stop the old port-8001 server with Ctrl+C in its Terminal, then start the new view:
+
+```sh
+export ASP_API_KEY="$(docker exec adaptive-security-platform-platform-1 printenv ASP_API_KEY)"
+ASP_DB_PATH=artifacts/otrf-playbook-network/findings.db \
+  python -m uvicorn adaptive_security.api:app --host 127.0.0.1 --port 8001
+```
+
+Open http://127.0.0.1:8001/ui. The seven failed-logon evidence events are distinct from
+**Supporting network context**. Accounts, endpoints, origins, and explanations are
+visible; long references and raw records expand on demand. Unassigned OTRF event severity
+is labeled unassigned. The signal explanation states that this is an offline finding.
+
+Network processing preserves `network-capture.zip` and writes `network-events.jsonl`.
+The inspected network ZIP SHA-256 is
+`c7dd67e1f2b914d4f553b3ef98d29b8858ed86b03ffa7dd7c0a55af30eacf03b`.
+To use a local network ZIP instead of downloading it, pass `--network-capture PATH`.
+
+The original capture contains 1,121 packets. This version supports classic microsecond
+PCAP with Ethernet (including single VLAN), complete nonfragmented IPv4, TCP, and UDP.
+It extracts metadata from 1,048 packets into 159 directed connection/UTC-second buckets;
+61 truncated IPv4 packets and 12 other IP protocol packets are counted separately and
+remain in the original capture. IPv6, reassembly, application payload decoding, PCAPNG,
+and nanosecond PCAP are not implemented. The parser does not claim to detect WinRM from
+its port number. PCAP packet time is UTC; collection observation time is unavailable
+and its fallback is explicitly recorded.
+
+Context linking requires a nearby Sysmon network event on the incident endpoint,
+an exact directed source/destination address, source/destination port, and protocol
+match, and a packet-time overlap within two seconds. Host anchors are restricted to
+30 seconds before through two minutes after the finding. The inspected capture yields
+45 matched buckets. Each retains packet numbers and matching host event IDs. Shared IP
+or temporal proximity alone cannot create a link. These are metadata relationships,
+not proof of maliciousness, successful compromise, or packet-level user attribution.
+
+The authenticated, paginated endpoint is `/v1/incidents/{incident_id}/context`.
+Context references are preserved in incident records and protected from the unlinked
+archive classification. Existing host-only artifacts display no network context;
+rerun into a new directory to obtain it. Live detection remains unchanged.
+
+## Explicit synthetic detector controls
+
+```sh
+python scripts/evaluate_signal.py examples/evaluation/password-spray.synthetic.jsonl \
+  --rule auth.password_spray --details
+```
+
+Six constructed cases cover a spray, single-account retries, separate origins,
+fewer-than-threshold accounts, a shared-kiosk benign lookalike, and a slow attack.
+The current rule intentionally reports one true positive, three true negatives,
+one false positive (shared kiosk), and one false negative (slow spray). This exposes
+threshold limitations; it is not measured accuracy on representative customer traffic.
+Held-out captured attacks and permissioned benign activity are still required before
+live deployment or tuning claims.
