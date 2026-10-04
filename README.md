@@ -388,3 +388,8 @@ separate UI-compatible password-spray findings database, evidence timeline, and 
 publisher-documented attack case. The new `auth.password_spray` detector is offline batch
 only; no live detection settings change. See [the OTRF evaluation guide](docs/OTRF_EVALUATION.md)
 for Mac commands, UI inspection on port 8001, labels, and coverage limits.
+
+Paired network metadata and exact host connection/time links are available with
+`--with-network`. The incident UI separates supporting context from detection evidence
+and shows accounts and origins before expandable raw records. See the guide for
+parser coverage, matching limits, and commands to inspect the combined replay.

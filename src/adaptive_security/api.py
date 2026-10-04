@@ -229,6 +229,20 @@ def create_app(
         return incident
 
     @app.get(
+        "/v1/incidents/{incident_id}/context",
+        response_model=list[SecurityEvent], dependencies=[Depends(authorize)],
+    )
+    def get_incident_context(
+        incident_id: str,
+        limit: Annotated[int, Query(ge=1, le=100)] = 100,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> list[SecurityEvent]:
+        context = store.incident_context(incident_id, limit, offset)
+        if context is None:
+            raise HTTPException(status_code=404, detail="Incident not found")
+        return context
+
+    @app.get(
         "/v1/incidents/{incident_id}/events",
         response_model=list[SecurityEvent],
         dependencies=[Depends(authorize)],

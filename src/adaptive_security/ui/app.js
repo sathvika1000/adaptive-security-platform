@@ -5,6 +5,7 @@ const el = (id) => document.getElementById(id);
 let apiKey = "";
 let incidentOffset = 0;
 let eventOffset = 0;
+let contextOffset = 0;
 let selected = null;
 let revision = 0;
 let session = 0;
@@ -107,12 +108,26 @@ async function selectIncident(incident) {
   for (const signal of incident.signals) {
     const card = element("div", "signal");
     card.append(element("strong", "", `${signal.title} · ${signal.mode} · Priority ${signal.priority}/10`));
-    card.append(element("span", "", `${signal.rule_id} v${signal.rule_version} · Evidence: ${signal.evidence_event_ids.join(", ")}`));
+    card.append(element("span", "", `${signal.rule_id} v${signal.rule_version} · ${signal.evidence_event_ids.length} evidence events`));
+    const references = element("details", "evidence-details");
+    references.append(element("summary", "", "Evidence references"));
+    references.append(element("pre", "", signal.evidence_event_ids.join("\n")));
+    card.append(references);
+    if (signal.rule_id === "auth.password_spray" && signal.rule_version === 1) {
+      const accounts = new Set(incident.entities.filter((e) => e.type === "user")
+        .map((e) => e.value.toLowerCase()));
+      card.append(element("p", "explanation",
+        `This candidate contains failed logons targeting ${accounts.size} distinct accounts. ` +
+        "The rule requires at least five accounts from a common IP or explicit source workstation within five minutes. " +
+        "This is a historical offline replay finding; active is the stored signal mode, not live deployment. " +
+        "Failed attempts do not establish a successful compromise."));
+    }
     signals.append(card);
   }
   el("event-count").textContent = `${incident.event_ids.length} event references`;
   el("event-list").replaceChildren(element("p", "empty-copy", "Loading events…"));
   el("history-list").replaceChildren(element("p", "empty-copy", "Loading history…"));
+  el("context-list").replaceChildren(element("p", "empty-copy", "Loading context…"));
   for (const button of el("incident-list").querySelectorAll(".incident-card")) {
     button.classList.remove("selected");
     button.setAttribute("aria-pressed", "false");
@@ -125,7 +140,7 @@ async function selectIncident(incident) {
     currentButton.setAttribute("aria-pressed", "true");
   }
   try {
-    await Promise.all([events(0, current), history(current)]);
+    await Promise.all([events(0, current), context(0, current), history(current)]);
     if (current === revision) notice("");
   } catch (error) {
     if (current === revision) showFailure(error);
@@ -141,24 +156,65 @@ async function events(offset, current = revision) {
   const list = el("event-list");
   list.replaceChildren();
   if (!page.length) list.append(element("p", "empty-copy", "No events on this page."));
-  for (const event of page) {
-    const row = element("article", "event");
-    const title = element("div", "event-top");
-    title.append(element("span", "event-title", `${event.category} · ${event.source}/${event.event_id}`));
-    if (event.outcome) {
-      const badge = element("span", "badge", event.outcome);
-      if (["failure", "success"].includes(event.outcome)) badge.classList.add(event.outcome);
-      title.append(badge);
-    }
-    row.append(title);
-    const rule = event.attributes?.rule_id ? ` · Rule ${event.attributes.rule_id}` : "";
-    row.append(element("div", "event-detail",
-      `${date(event.event_time)} · Severity ${event.severity}/10${rule}${event.source_ip ? ` · IP ${event.source_ip}` : ""}`));
-    list.append(row);
-  }
+  for (const event of page) list.append(eventRow(event));
   el("events-page").textContent = `Page ${Math.floor(offset / PAGE_SIZE) + 1}`;
   el("events-prev").disabled = offset === 0;
   el("events-next").disabled = page.length < PAGE_SIZE;
+}
+
+function eventRow(event, supporting = false) {
+  const row = element("article", "event");
+  const title = element("div", "event-top");
+  const user = event.entities.find((e) => e.type === "user")?.value;
+  const host = event.entities.find((e) => e.type === "host")?.value;
+  const origin = event.source_ip || event.entities.find((e) => e.type === "source_host")?.value;
+  const attrs = event.attributes || {};
+  let description = event.category;
+  if (event.action === "logon") description = `Logon ${event.outcome || "attempt"}${user ? ` · ${user}` : ""}`;
+  else if (event.action === "captured_connection") {
+    description = `${attrs.protocol?.toUpperCase() || "Network"} · ${event.source_ip}:${attrs.source_port} → ${attrs.destination_ip}:${attrs.destination_port}`;
+  } else if (user) description += ` · ${user}`;
+  title.append(element("span", "event-title", description));
+  if (event.outcome) {
+    const badge = element("span", "badge", event.outcome);
+    if (["failure", "success"].includes(event.outcome)) badge.classList.add(event.outcome);
+    title.append(badge);
+  }
+  row.append(title);
+  const severity = event.severity === 0 && ["otrf", "otrf-network"].includes(event.source) ?
+    "Severity unassigned" : `Severity ${event.severity}/10`;
+  row.append(element("div", "event-detail", `${date(event.event_time)} · ${severity}`));
+  if (host) row.append(element("div", "event-detail", `Endpoint: ${host}`));
+  if (origin) row.append(element("div", "event-detail", `Origin: ${origin}`));
+  if (supporting) {
+    row.append(element("p", "explanation", attrs.explanation || "Supporting context; not detection evidence."));
+    row.append(element("div", "event-detail", `${attrs.packet_count} captured packets · ${attrs.matched_host_event_ids?.length || 0} matching host events`));
+  }
+  const details = element("details", "evidence-details");
+  details.append(element("summary", "", "Source record and references"));
+  details.append(element("pre", "", JSON.stringify({
+    source: event.source, event_id: event.event_id, observed_time: event.observed_time,
+    action: event.action, entities: event.entities, attributes: attrs,
+  }, null, 2)));
+  row.append(details);
+  return row;
+}
+
+async function context(offset, current = revision) {
+  const incident = selected;
+  if (!incident) return;
+  const list = el("context-list");
+  const count = incident.context_event_refs?.length || 0;
+  el("context-count").textContent = `${count} network context references`;
+  const page = count ? await read(`/v1/incidents/${encodeURIComponent(incident.incident_id)}/context?limit=${PAGE_SIZE}&offset=${offset}`) : [];
+  if (current !== revision) return;
+  contextOffset = offset;
+  list.replaceChildren();
+  if (!page.length) list.append(element("p", "empty-copy", "No linked network context on this page."));
+  for (const event of page) list.append(eventRow(event, true));
+  el("context-page").textContent = `Page ${Math.floor(offset / PAGE_SIZE) + 1}`;
+  el("context-prev").disabled = offset === 0;
+  el("context-next").disabled = page.length < PAGE_SIZE;
 }
 
 async function history(current) {
@@ -252,5 +308,11 @@ for (const [id, delta] of [["incidents-prev", -PAGE_SIZE], ["incidents-next", PA
 for (const [id, delta] of [["events-prev", -PAGE_SIZE], ["events-next", PAGE_SIZE]]) {
   el(id).addEventListener("click", async () => {
     try { await events(eventOffset + delta); } catch (error) { showFailure(error); }
+  });
+}
+
+for (const [id, delta] of [["context-prev", -PAGE_SIZE], ["context-next", PAGE_SIZE]]) {
+  el(id).addEventListener("click", async () => {
+    try { await context(contextOffset + delta); } catch (error) { showFailure(error); }
   });
 }

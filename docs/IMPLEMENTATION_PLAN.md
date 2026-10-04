@@ -124,6 +124,10 @@ Keep deterministic detection and evidence traceability through each slice.
   database supports UI evidence inspection without changing live per-user assignments.
 - Publisher-documented spray case and per-case evaluator support are available;
   background remains unlabeled. Synthetic regressions test boundaries and isolation.
-- Next: held-out attack captures and benign lookalikes; network capture import;
+- Paired network capture import now preserves the original PCAP, reports parser
+  coverage, and links 45 metadata buckets to nearby endpoint Sysmon connections.
+  The authenticated UI separates paged network context from the seven spray events;
+  readable accounts/origins, explanations, and expandable provenance support review.
+- Next: held-out attack captures and benign lookalikes;
   ticket/share/remote-execution detection and cross-category relationships. Live spray
   ingestion and real-world accuracy remain unimplemented/unmeasured.

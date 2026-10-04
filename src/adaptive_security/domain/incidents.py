@@ -7,6 +7,13 @@ from adaptive_security.domain.detections import DetectionSignal
 from adaptive_security.domain.events import EntityRef
 
 
+class EventReference(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    source: str = Field(min_length=1)
+    event_id: str = Field(min_length=1)
+
+
 class IncidentStatus(StrEnum):
     OPEN = "open"
     CLOSED = "closed"
@@ -24,6 +31,7 @@ class Incident(BaseModel):
     event_ids: tuple[str, ...]
     entities: tuple[EntityRef, ...] = ()
     signals: tuple[DetectionSignal, ...] = ()
+    context_event_refs: tuple[EventReference, ...] = ()
 
 
 class IncidentTransition(BaseModel):

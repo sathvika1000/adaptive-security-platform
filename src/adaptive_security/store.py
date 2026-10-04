@@ -12,6 +12,12 @@ from adaptive_security.domain.detections import DetectionSignal
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentStatus, IncidentTransition
 
+CONTEXT_EXISTS_SQL = """EXISTS (
+    SELECT 1 FROM incidents AS ci, json_each(ci.body, '$.context_event_refs') AS ref
+    WHERE json_extract(ref.value, '$.source') = e.source
+      AND json_extract(ref.value, '$.event_id') = e.event_id
+)"""
+
 NEIGHBOR_PAGE_SIZE = 128
 SIGNAL_PAGE_SIZE = 128
 
@@ -409,19 +415,22 @@ class SQLiteStore:
         with self.transaction() as conn:
             total = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
             row = conn.execute(
-                """SELECT
+                f"""SELECT
                     COUNT(*),
-                    SUM(CASE WHEN e.incident_id IS NOT NULL THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN e.incident_id IS NULL AND EXISTS (
+                    SUM(CASE WHEN (e.incident_id IS NOT NULL OR {CONTEXT_EXISTS_SQL})
+                        THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN e.incident_id IS NULL AND NOT ({CONTEXT_EXISTS_SQL}) AND EXISTS (
                         SELECT 1 FROM event_signals AS s
                         WHERE s.source = e.source AND s.event_id = e.event_id
                     ) THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN e.incident_id IS NULL AND e.correlation_key IS NOT NULL
+                    SUM(CASE WHEN e.incident_id IS NULL AND NOT ({CONTEXT_EXISTS_SQL})
+                        AND e.correlation_key IS NOT NULL
                         AND NOT EXISTS (
                             SELECT 1 FROM event_signals AS s
                             WHERE s.source = e.source AND s.event_id = e.event_id
                         ) THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN e.incident_id IS NULL AND e.correlation_key IS NULL
+                    SUM(CASE WHEN e.incident_id IS NULL AND NOT ({CONTEXT_EXISTS_SQL})
+                        AND e.correlation_key IS NULL
                         AND NOT EXISTS (
                             SELECT 1 FROM event_signals AS s
                             WHERE s.source = e.source AND s.event_id = e.event_id
@@ -430,11 +439,11 @@ class SQLiteStore:
                 (cutoff,),
             ).fetchone()
             rules = conn.execute(
-                """SELECT e.source, json_extract(e.body, '$.category') AS category,
+                f"""SELECT e.source, json_extract(e.body, '$.category') AS category,
                           json_extract(e.body, '$.attributes.rule_id') AS rule_id,
                           COUNT(*) AS event_count
                    FROM events AS e
-                   WHERE e.event_time < ? AND e.incident_id IS NULL
+                   WHERE e.event_time < ? AND e.incident_id IS NULL AND NOT ({CONTEXT_EXISTS_SQL})
                      AND e.correlation_key IS NULL
                      AND NOT EXISTS (
                          SELECT 1 FROM event_signals AS s
@@ -473,6 +482,27 @@ class SQLiteStore:
                 (incident.incident_id, limit, offset),
             ).fetchall()
         return [SecurityEvent.model_validate_json(row[0]) for row in rows]
+
+    def incident_context(
+        self, incident_id: str, limit: int = 100, offset: int = 0
+    ) -> list[SecurityEvent] | None:
+        with self.transaction() as conn:
+            incident = self.stored_incident(conn, incident_id)
+            if incident is None:
+                return None
+            refs = incident.context_event_refs[offset:offset + limit]
+            if not refs:
+                return []
+            placeholders = ", ".join("(?, ?)" for _ in refs)
+            rows = conn.execute(
+                f"SELECT source, event_id, body FROM events "
+                f"WHERE (source, event_id) IN ({placeholders})",
+                [part for ref in refs for part in (ref.source, ref.event_id)],
+            ).fetchall()
+            found = {(source, event_id): SecurityEvent.model_validate_json(body)
+                     for source, event_id, body in rows}
+            return [found[(ref.source, ref.event_id)] for ref in refs
+                    if (ref.source, ref.event_id) in found]
 
     def close_incident(
         self, incident_id: str, request_id: str | None = None, actor: str | None = None
