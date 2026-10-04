@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "rule_id": "auth.rc4_service_ticket_burst",
+  "datasets": [
+    {
+      "dataset_id": "rc4-ticket-synthetic-controls",
+      "cases_file": "rc4-tickets.synthetic.jsonl",
+      "cases_sha256": "e468969ed52ff0bcf4237f4773a5027bbebe06b2177b2137f9e86fce7fcdcbc7",
+      "kind": "synthetic",
+      "partition": "control",
+      "capture_id": "constructed-rc4-ticket-controls-v1",
+      "label_reference": "docs/OTRF_EVALUATION.md: RC4 ticket candidate controls"
+    }
+  ]
+}

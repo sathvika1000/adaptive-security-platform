@@ -122,6 +122,15 @@ async function selectIncident(incident) {
         "This is a historical offline replay finding; active is the stored signal mode, not live deployment. " +
         "Failed attempts do not establish a successful compromise."));
     }
+    if (signal.rule_id === "auth.rc4_service_ticket_burst" && signal.rule_version === 1) {
+      const services = new Set(incident.entities.filter((e) => e.type === "service_account")
+        .map((e) => e.value.trim().toLowerCase()));
+      card.append(element("p", "explanation",
+        `This candidate contains successful RC4 ticket requests for ${services.size} distinct service accounts. ` +
+        "The rule requires at least five nonmachine services in five minutes from one requester and client IP on one domain controller. " +
+        "This is an offline replay finding. Legacy applications can produce the same pattern; " +
+        "ticket issuance does not prove password cracking or compromise."));
+    }
     signals.append(card);
   }
   el("event-count").textContent = `${incident.event_ids.length} event references`;
@@ -171,6 +180,9 @@ function eventRow(event, supporting = false) {
   const attrs = event.attributes || {};
   let description = event.category;
   if (event.action === "logon") description = `Logon ${event.outcome || "attempt"}${user ? ` · ${user}` : ""}`;
+  else if (event.action === "service_ticket_request") {
+    description = `Service ticket · ${attrs.service_name || "Unknown service"}${user ? ` · Requester: ${user}` : ""}`;
+  }
   else if (event.action === "captured_connection") {
     description = `${attrs.protocol?.toUpperCase() || "Network"} · ${event.source_ip}:${attrs.source_port} → ${attrs.destination_ip}:${attrs.destination_port}`;
   } else if (user) description += ` · ${user}`;
@@ -184,8 +196,14 @@ function eventRow(event, supporting = false) {
   const severity = event.severity === 0 && ["otrf", "otrf-network"].includes(event.source) ?
     "Severity unassigned" : `Severity ${event.severity}/10`;
   row.append(element("div", "event-detail", `${date(event.event_time)} · ${severity}`));
-  if (host) row.append(element("div", "event-detail", `Endpoint: ${host}`));
+  if (host) row.append(element("div", "event-detail",
+    `${event.action === "service_ticket_request" ? "Domain controller" : "Endpoint"}: ${host}`));
   if (origin) row.append(element("div", "event-detail", `Origin: ${origin}`));
+  if (event.action === "service_ticket_request") {
+    row.append(element("div", "event-detail",
+      `Ticket encryption: ${attrs.ticket_encryption_type === 23 ? "RC4 (0x17)" : attrs.ticket_encryption_type ?? "Unknown"} · ` +
+      `Ticket status: ${attrs.ticket_status === 0 ? "Issued successfully" : attrs.ticket_status ?? "Unknown"}`));
+  }
   if (supporting) {
     row.append(element("p", "explanation", attrs.explanation || "Supporting context; not detection evidence."));
     row.append(element("div", "event-detail", `${attrs.packet_count} captured packets · ${attrs.matched_host_event_ids?.length || 0} matching host events`));

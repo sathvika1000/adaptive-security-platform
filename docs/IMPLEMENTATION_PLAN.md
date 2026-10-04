@@ -136,3 +136,11 @@ Keep deterministic detection and evidence traceability through each slice.
   event overlap across partitions, and suppress performance metrics on single-label
   captures. Replay emits a development suite. No new held-out capture or representative
   benign measurement has been completed by this infrastructure change.
+- Offline RC4 service-ticket burst detection adds a five-event investigation tied to
+  the publisher-documented T1558.003 development simulation. Ticket status remains
+  separate from logon outcome, and the UI distinguishes requester, service account,
+  client IP, and issuing DC. Six synthetic controls expose a legacy-app false positive
+  and a slow-attack miss. Shared network buckets preserve both investigations' host
+  anchors (45 spray, 39 ticket buckets; 52 in their union).
+  Live deployment, AES/slow/single-service detection, held-out
+  evaluation, and representative benign measurements remain open.

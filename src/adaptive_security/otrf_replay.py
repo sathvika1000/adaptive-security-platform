@@ -14,6 +14,7 @@ from urllib.request import urlopen
 
 from adaptive_security.connectors.otrf import normalize
 from adaptive_security.detection.password_spray import detect_password_spray
+from adaptive_security.detection.rc4_tickets import detect_rc4_tickets
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.evaluation import EvaluationCase
 from adaptive_security.evaluation_suite import Dataset, Suite
@@ -31,6 +32,22 @@ URL = ("https://raw.githubusercontent.com/OTRF/Security-Datasets/master/"
 SHA256 = "2a2d80e7b8d8ee6821a1754118f3ab908b4bac84cf4ed3d018e281f631bd2870"
 MEMBER = "purplesharp_ad_playbook_I_2020-10-22042947.json"
 DOCUMENTATION = "https://securitydatasets.com/notebooks/atomic/windows/lateral_movement/SDWIN-201022042947.html"
+
+
+def _merge_context(linked: dict[str, SecurityEvent], event: SecurityEvent,
+                   incident_id: str) -> None:
+    previous = linked.get(event.event_id)
+    old = previous.attributes if previous else {}
+    attrs = event.attributes
+    linked[event.event_id] = event.model_copy(update={"attributes": {
+        **attrs,
+        "matched_host_event_ids": sorted(set(old.get("matched_host_event_ids", [])) |
+                                         set(attrs["matched_host_event_ids"])),
+        "matched_incident_ids": sorted(set(old.get("matched_incident_ids", [])) | {incident_id}),
+        "explanation": "Addresses, ports, protocol and time match endpoint network events "
+                       "around the linked investigations. This is supporting metadata, "
+                       "not proof of maliciousness or compromise.",
+    }})
 
 
 def load_capture(path: Path) -> tuple[list[SecurityEvent], dict[str, int]]:
@@ -83,13 +100,17 @@ def replay(capture: Path, destination: Path,
                 normalized.write(event.model_dump_json() + "\n")
                 service.ingest(event)
         spray = detect_password_spray(ordered)
-        linked = {}
+        tickets = detect_rc4_tickets(ordered)
+        linked: dict[str, SecurityEvent] = {}
         enriched = []
-        for incident in spray:
+        for incident in (*spray, *tickets):
             incident, matches = link_network(incident, ordered, network_events)
             enriched.append(incident)
-            linked.update({event.event_id: event for event in matches})
-        spray = tuple(enriched)
+            for event in matches:
+                _merge_context(linked, event, incident.incident_id)
+        findings = tuple(enriched)
+        spray = tuple(i for i in findings if i.incident_id.startswith("spray-"))
+        tickets = tuple(i for i in findings if i.incident_id.startswith("tgs-"))
         network_events = [linked.get(event.event_id, event) for event in network_events]
         if network_capture:
             with (output / "network-events.jsonl").open("x", encoding="utf-8") as target:
@@ -100,14 +121,17 @@ def replay(capture: Path, destination: Path,
         with finding_store.transaction() as conn:
             for event in [*ordered, *network_events]:
                 finding_store.put_event(conn, event)
-            for incident in spray:
+            for incident in findings:
                 members: list[tuple[SecurityEvent, str | None]] = [
                     (by_id[event_id], None) for event_id in incident.event_ids
                 ]
                 finding_store.save_incident(conn, incident, members, set(), members[-1][0])
-        with (output / "spray-incidents.jsonl").open("x", encoding="utf-8") as findings:
+        with (output / "spray-incidents.jsonl").open("x", encoding="utf-8") as spray_file:
             for incident in spray:
-                findings.write(incident.model_dump_json() + "\n")
+                spray_file.write(incident.model_dump_json() + "\n")
+        with (output / "rc4-ticket-incidents.jsonl").open("x", encoding="utf-8") as ticket_file:
+            for incident in tickets:
+                ticket_file.write(incident.model_dump_json() + "\n")
         # A narrow documented attack case, not labels for the rest of this capture.
         documented = [e for e in ordered if e.attributes["windows_event_id"] == 4625
                       and e.attributes["channel"] == "Security"
@@ -127,6 +151,35 @@ def replay(capture: Path, destination: Path,
             label_reference=DOCUMENTATION,
         ),))
         (output / "evaluation-suite.json").write_text(suite.model_dump_json(indent=2) + "\n")
+        ticket_services = {"sysmonsvc", "nxlogsvc", "defensesvc", "otrsvc", "mordorsvc"}
+        documented_tickets = [e for e in ordered
+            if e.attributes.get("windows_event_id") == 4769
+            and e.attributes.get("channel") == "Security"
+            and e.attributes.get("ticket_status") == 0
+            and e.attributes.get("ticket_encryption_type") == 23
+            and e.attributes.get("service_name") in ticket_services
+            and e.source_ip == "172.18.39.5"
+            and any(entity.type == "user" and entity.value.casefold() == "pgustavo@theshire.local"
+                    for entity in e.entities)
+            and datetime(2020, 10, 22, 8, 29, 53, tzinfo=UTC) <= e.event_time
+                <= datetime(2020, 10, 22, 8, 29, 54, tzinfo=UTC)]
+        if (len(documented_tickets) != 5 or
+                {e.attributes["service_name"] for e in documented_tickets} != ticket_services):
+            raise ValueError("documented ticket evidence differs from the inspected capture")
+        ticket_case = EvaluationCase(case_id="purplesharp-T1558.003-rc4-tickets",
+                                     label="malicious", events=tuple(documented_tickets))
+        ticket_path = output / "rc4-ticket-case.jsonl"
+        ticket_path.write_text(ticket_case.model_dump_json() + "\n")
+        ticket_suite = Suite(version=1, rule_id="auth.rc4_service_ticket_burst", datasets=(Dataset(
+            dataset_id="purplesharp-rc4-tickets-development", cases_file=ticket_path.name,
+            cases_sha256=sha256(ticket_path.read_bytes()).hexdigest(),
+            kind="captured", partition="development",
+            capture_id="OTRF-PurpleSharp-AD-Playbook-I", capture_sha256=SHA256,
+            label_reference=DOCUMENTATION,
+        ),))
+        (output / "rc4-ticket-suite.json").write_text(ticket_suite.model_dump_json(indent=2) + "\n")
+        ticket_ids = {e.event_id for e in documented_tickets}
+        ticket_detected = any(ticket_ids <= set(i.event_ids) for i in tickets)
         documented_ids = {e.event_id for e in documented}
         detected = any(documented_ids and documented_ids <= set(i.event_ids) for i in spray)
         report: dict[str, object] = {
@@ -146,6 +199,16 @@ def replay(capture: Path, destination: Path,
             ),
             "production_auth_incidents": len(store.incidents()),
             "password_spray_candidates": len(spray),
+            "rc4_ticket_candidates": len(tickets),
+            "rc4_ticket_evaluation": {
+                "case_id": ticket_case.case_id, "label": "malicious",
+                "label_basis": "Publisher T1558.003 simulation lists five service accounts",
+                "evidence_count": len(documented_tickets), "detected": ticket_detected,
+                "verdict": "true_positive" if ticket_detected else "false_negative",
+                "precision": None, "recall": None,
+                "limitation": "Development capture only. RC4 issuance does not prove cracking; "
+                              "background remains unlabeled and live deployment is disabled.",
+            },
             "evaluation": {
                 "case_id": "purplesharp-T1110.003-workstation5", "label": "malicious",
                 "label_basis": "Publisher simulation transcript: seven accounts at 04:29:53 local",
@@ -160,19 +223,20 @@ def replay(capture: Path, destination: Path,
                 "failures_then_success": "existing production detector replayed",
                 "novel_source_ip": "existing shadow detector replayed; baseline sufficiency "
                                    "and absent addresses prevent a labeled accuracy claim",
-                "kerberoasting": "ticket telemetry preserved; detector not implemented",
+                "kerberoasting": "offline RC4 service-ticket burst candidate; "
+                                 "AES requests and slow or single-service attacks not covered",
                 "share_discovery": "share telemetry preserved; detector not implemented",
                 "winrm_lateral_movement": "process/network telemetry preserved; "
                                           "detector not implemented",
             },
-            "deployment": "Password spray is an offline batch detector; "
-                          "spray incidents are separate from production "
+            "deployment": "Password spray and RC4 ticket bursts are offline batch detectors; "
+                          "their incidents are separate from production "
                           "per-user incident assignments.",
         }
         (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
         # Timeline is supporting telemetry around each finding, not causal attribution.
         with (output / "timeline.jsonl").open("x", encoding="utf-8") as timeline:
-            for incident in spray:
+            for incident in (*spray, *tickets):
                 hosts = {e.value for e in incident.entities if e.type == "host"}
                 for event in ordered:
                     if (incident.first_seen - timedelta(seconds=30) <= event.event_time
@@ -217,7 +281,8 @@ def main() -> None:
                     shutil.copyfileobj(response, target)
             report = replay(capture, args.output, network_capture)
         print(json.dumps({"output": str(args.output), "records": report["normalized_events"],
-                          "evaluation": report["evaluation"]}, indent=2))
+                          "evaluation": report["evaluation"],
+                          "rc4_ticket_evaluation": report["rc4_ticket_evaluation"]}, indent=2))
     except (OSError, ValueError, zipfile.BadZipFile) as error:
         parser.error(str(error))
 

@@ -385,7 +385,7 @@ python -m adaptive_security.otrf_replay artifacts/otrf-playbook-1
 
 This preserves all raw records and produces an inventory, production replay database,
 separate UI-compatible password-spray findings database, evidence timeline, and a narrow
-publisher-documented attack case. The new `auth.password_spray` detector is offline batch
+publisher-documented attack case. The `auth.password_spray` detector is offline batch
 only; no live detection settings change. See [the OTRF evaluation guide](docs/OTRF_EVALUATION.md)
 for Mac commands, UI inspection on port 8001, labels, and coverage limits.
 
@@ -393,3 +393,10 @@ Paired network metadata and exact host connection/time links are available with
 `--with-network`. The incident UI separates supporting context from detection evidence
 and shows accounts and origins before expandable raw records. See the guide for
 parser coverage, matching limits, and commands to inspect the combined replay.
+
+Replay also builds a separate five-event RC4 service-ticket investigation with requester,
+service accounts, client IP, and issuing domain controller. The offline
+`auth.rc4_service_ticket_burst` rule flags a narrow Kerberoasting candidate; legitimate
+legacy applications can trigger it. Ticket issuance does not prove cracking or compromise.
+Provenance-aware suites distinguish development captures from synthetic controls and
+leave performance metrics null for single-label captured cases. Live ingestion is unchanged.
