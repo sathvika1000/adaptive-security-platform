@@ -67,3 +67,8 @@ h3 { font-size: 17px; margin: 0; }
 .empty-copy { color: #718690; font-size: 13px; padding: 14px 0; }
 @media (max-width: 900px) { .access { display: block; } .access form { margin-top: 20px; } .workspace { grid-template-columns: 1fr; } }
 @media (max-width: 540px) { .masthead .eyebrow { display: none; } .access, .list-panel, .detail-panel { padding: 19px; } .access-controls { flex-wrap: wrap; } .access-controls input { flex-basis: 100%; } .access-controls button { flex: 1; } }
+
+.evidence-details { margin-top: 10px; color: #45616b; font-size: 12px; }
+.evidence-details summary { cursor: pointer; font-weight: 650; padding: 5px 0; }
+.evidence-details pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow-y: auto; background: #f5f8f8; padding: 12px; border-radius: 6px; }
+.explanation { font-size: 13px; line-height: 1.6; color: #355962; }
