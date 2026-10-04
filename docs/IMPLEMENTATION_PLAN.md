@@ -151,3 +151,9 @@ Keep deterministic detection and evidence traceability through each slice.
   EVTX workflow and historical results are in `CAPTURED_VALIDATION.md`. Fresh captures
   are required after using these results for development; representative benign and
   RC4-ticket held-out validation remain open.
+
+Offline Windows authentication extension: separate explicit-credential fan-out (4648) and Kerberos
+bad-password fan-out (4771/0x18) rules now preserve their evidence and enforce independent telemetry
+families. Original baseline mappings and detector files stay unchanged. Reused captures are forced
+into development partitions; fresh validation and representative benign testing are still pending.
+See [Windows authentication development](WINDOWS_AUTH_DEVELOPMENT.md) for reproduction and scope.

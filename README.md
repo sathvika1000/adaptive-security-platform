@@ -407,3 +407,8 @@ preauthentication telemetry rather than the supported failed-logon records. Thei
 original evidence is preserved, and the detector remains frozen. See
 [captured validation](docs/CAPTURED_VALIDATION.md) for results, optional dependencies,
 label limitations, and the remaining representative benign testing requirement.
+
+Opt-in offline rules now cover explicit-credential account fan-out and Kerberos bad-password
+preauthentication fan-out. Their reports force previously inspected captures into development
+partitions and preserve the original baseline. See
+[Windows authentication development](docs/WINDOWS_AUTH_DEVELOPMENT.md) for commands and limitations.
