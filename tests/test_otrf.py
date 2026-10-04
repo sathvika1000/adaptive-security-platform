@@ -144,6 +144,16 @@ def test_isolated_replay_artifacts(tmp_path: Path, monkeypatch):
     assert not timeline[-1]["evidence"]
     case = EvaluationCase.model_validate_json((destination / "attack-case.jsonl").read_text())
     assert evaluate_report([case], "auth.password_spray").summary.true_positive == 1
+    from adaptive_security.evaluation_suite import evaluate_suite
+
+    suite = evaluate_suite(destination / "evaluation-suite.json")
+    result = suite["datasets"][0]
+    assert result["dataset"]["partition"] == "development"
+    assert result["dataset"]["capture_sha256"] == module.SHA256
+    assert result["summary"]["true_positive"] == 1
+    assert result["summary"]["precision"] is None
+    assert result["summary"]["recall"] is None
+    assert (destination / "evaluation-suite.json").stat().st_mode & 0o777 == 0o600
     assert destination.stat().st_mode & 0o777 == 0o700
     with pytest.raises(ValueError, match="exists"):
         module.replay(capture, destination)

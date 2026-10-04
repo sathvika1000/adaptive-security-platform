@@ -131,3 +131,8 @@ Keep deterministic detection and evidence traceability through each slice.
 - Next: held-out attack captures and benign lookalikes;
   ticket/share/remote-execution detection and cross-category relationships. Live spray
   ingestion and real-world accuracy remain unimplemented/unmeasured.
+- Provenance-aware evaluation suites now pin labeled case files, keep synthetic
+  controls and captured development/held-out results separate, reject capture or
+  event overlap across partitions, and suppress performance metrics on single-label
+  captures. Replay emits a development suite. No new held-out capture or representative
+  benign measurement has been completed by this infrastructure change.
