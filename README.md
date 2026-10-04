@@ -412,3 +412,8 @@ Opt-in offline rules now cover explicit-credential account fan-out and Kerberos 
 preauthentication fan-out. Their reports force previously inspected captures into development
 partitions and preserve the original baseline. See
 [Windows authentication development](docs/WINDOWS_AUTH_DEVELOPMENT.md) for commands and limitations.
+
+For fresh Windows authentication exports, the
+[local capture validation workflow](docs/LOCAL_CAPTURE_VALIDATION.md) freezes implementation and
+input hashes, requires explicit review metadata for labeled captures, and keeps unlabeled activity
+out of accuracy calculations. Representative benign validation is still pending.

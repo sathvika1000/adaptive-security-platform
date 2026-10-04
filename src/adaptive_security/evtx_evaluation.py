@@ -9,7 +9,7 @@ from collections import Counter
 from hashlib import sha1, sha256
 from importlib import import_module
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Protocol
 from urllib.parse import quote
 from urllib.request import urlopen
 
@@ -59,7 +59,16 @@ def _verify_rules(reservation: Reservation) -> None:
             raise ValueError("detector differs from reservation; do not reuse held-out label")
 
 
-def load_capture(path: Path, capture: Capture) -> list[SecurityEvent]:
+class CaptureIntegrity(Protocol):
+    @property
+    def capture_sha256(self) -> str: ...
+    @property
+    def git_blob_sha(self) -> str: ...
+    @property
+    def path(self) -> str: ...
+
+
+def load_capture(path: Path, capture: CaptureIntegrity) -> list[SecurityEvent]:
     raw = path.read_bytes()
     if (len(raw) > 5_000_000 or sha256(raw).hexdigest() != capture.capture_sha256 or
             sha1(b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest()

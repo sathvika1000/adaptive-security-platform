@@ -157,3 +157,9 @@ bad-password fan-out (4771/0x18) rules now preserve their evidence and enforce i
 families. Original baseline mappings and detector files stay unchanged. Reused captures are forced
 into development partitions; fresh validation and representative benign testing are still pending.
 See [Windows authentication development](WINDOWS_AUTH_DEVELOPMENT.md) for reproduction and scope.
+
+Reviewed local capture validation now supports frozen Windows authentication implementations,
+complete local EVTX exports and explicit malicious/benign/unlabeled review declarations. Known
+inspected captures cannot be declared held out; unknown activity is excluded from accuracy metrics.
+Representative benign exports and fresh labeled attack captures are still needed; the workflow does
+not imply production accuracy or enable live rules. See [local validation](LOCAL_CAPTURE_VALIDATION.md).
