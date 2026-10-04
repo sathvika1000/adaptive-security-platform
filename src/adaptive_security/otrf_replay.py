@@ -16,6 +16,7 @@ from adaptive_security.connectors.otrf import normalize
 from adaptive_security.detection.password_spray import detect_password_spray
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.evaluation import EvaluationCase
+from adaptive_security.evaluation_suite import Dataset, Suite
 from adaptive_security.otrf_network import (
     NETWORK_SHA256,
     NETWORK_URL,
@@ -117,6 +118,15 @@ def replay(capture: Path, destination: Path,
         case = EvaluationCase(case_id="purplesharp-T1110.003-workstation5",
                               label="malicious", events=tuple(documented))
         (output / "attack-case.jsonl").write_text(case.model_dump_json() + "\n")
+        suite = Suite(version=1, rule_id="auth.password_spray", datasets=(Dataset(
+            dataset_id="purplesharp-playbook-I-development",
+            cases_file="attack-case.jsonl",
+            cases_sha256=sha256((output / "attack-case.jsonl").read_bytes()).hexdigest(),
+            kind="captured", partition="development",
+            capture_id="OTRF-PurpleSharp-AD-Playbook-I", capture_sha256=SHA256,
+            label_reference=DOCUMENTATION,
+        ),))
+        (output / "evaluation-suite.json").write_text(suite.model_dump_json(indent=2) + "\n")
         documented_ids = {e.event_id for e in documented}
         detected = any(documented_ids and documented_ids <= set(i.event_ids) for i in spray)
         report: dict[str, object] = {

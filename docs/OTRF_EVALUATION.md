@@ -65,6 +65,7 @@ forwarder at it. The fuller supporting timeline is in `timeline.jsonl`.
 | `findings.db` | Separate UI-compatible database containing batch spray findings |
 | `spray-incidents.jsonl` | Candidate incidents and exact evidence IDs |
 | `attack-case.jsonl` | Only the seven failures in the publisher-documented attack case |
+| `evaluation-suite.json` | Checksum-pinned development case and capture provenance |
 | `timeline.jsonl` | Mapped capture telemetry from 30 seconds before to two minutes after findings |
 | `report.json` | Provenance, inventory, mapping coverage, missingness, and case verdict |
 
@@ -181,3 +182,50 @@ one false positive (shared kiosk), and one false negative (slow spray). This exp
 threshold limitations; it is not measured accuracy on representative customer traffic.
 Held-out captured attacks and permissioned benign activity are still required before
 live deployment or tuning claims.
+
+## Provenance-aware evaluation suites
+
+New replay outputs also contain `evaluation-suite.json`. Run it with:
+
+```sh
+python -m adaptive_security.evaluation_suite \
+  artifacts/otrf-playbook-network/evaluation-suite.json
+python -m adaptive_security.evaluation_suite \
+  examples/evaluation/password-spray.suite.json
+```
+
+The first command reports the publisher-documented attack as **development** coverage;
+precision and recall stay null because the capture's labeled case contains no benign
+activity. The second reports the six **synthetic controls** separately. Existing
+`scripts/evaluate_signal.py` behavior is unchanged. Older replay outputs must be rerun
+into a new directory to obtain the suite manifest.
+
+The manifest has `version: 1`, one `rule_id`, and a nonempty `datasets` array. Each dataset
+declares `dataset_id`, relative `cases_file`, its `cases_sha256`, `kind` (`synthetic` or
+`captured`), `partition` (`control`, `development`, or `held_out`), `capture_id`, and
+`label_reference`. Captured datasets also require the original `capture_sha256`.
+Synthetic datasets must use `control`. Case files use the existing labeled canonical
+event JSONL format. Paths must remain within the manifest directory, including symlinks.
+Compute case digests with `shasum -a 256 PATH` after the labeled cases are finalized.
+
+Before running any detector, the evaluator validates every file's checksum, unique
+dataset/case IDs, and partition boundaries. Reusing a capture ID, original capture
+digest, case-file digest, or source/event identity in different partitions fails.
+Cases from the same capture must stay in the same partition. Results are per dataset;
+there is no combined score across development, held-out, and synthetic data. Reports
+contain case IDs, labels, predictions, verdicts, and declared provenance, without event
+bodies, user/host entities, or raw logs. Use non-sensitive IDs and label references
+because those declarations appear in reports.
+
+Partitions and label references are declarations, not independent certification. The
+evaluator verifies the labeled case files; it does not reopen the original capture to
+verify its declared digest or prove that a human never used it for tuning. Record the
+capture reservation and labeling decision before development, retain original captures,
+and freeze the rule before evaluating a reserved capture. Renaming/re-normalizing events
+or changing capture declarations can defeat overlap checks; keep those identities stable.
+
+Only deliberately labeled cases enter these reports. Unknown background must remain
+excluded, rather than receiving an inferred benign label. Counts and metrics describe
+the supplied cases, not attack-level localization or enterprise false-alert rates. A
+dataset with both benign and malicious cases still needs representative sampling before
+its metrics support a product claim. No new held-out or benign capture is supplied here.
