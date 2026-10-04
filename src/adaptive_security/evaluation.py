@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from adaptive_security.detection.password_spray import detect_password_spray
 from adaptive_security.detection.rc4_tickets import detect_rc4_tickets
+from adaptive_security.detection.windows_auth import RULES, detect_windows_auth
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.service import IngestionService
 from adaptive_security.store import SQLiteStore
@@ -32,6 +33,7 @@ class EvaluationSummary(BaseModel):
 EvaluationRule = Literal[
     "auth.failures_then_success", "auth.novel_source_ip", "auth.password_spray",
     "auth.rc4_service_ticket_burst",
+    "auth.explicit_credential_fanout", "auth.kerberos_password_spray",
 ]
 EvaluationVerdict = Literal["true_positive", "false_positive", "true_negative", "false_negative"]
 
@@ -69,6 +71,9 @@ def _case_results(
                            for signal in incident.signals]
             elif rule_id == "auth.rc4_service_ticket_burst":
                 signals = [signal for incident in detect_rc4_tickets(list(case.events))
+                           for signal in incident.signals]
+            elif rule_id in RULES:
+                signals = [signal for incident in detect_windows_auth(list(case.events), rule_id)
                            for signal in incident.signals]
             detected = any(signal.rule_id == rule_id for signal in signals)
             verdict: EvaluationVerdict

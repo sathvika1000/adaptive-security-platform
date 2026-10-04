@@ -16,6 +16,8 @@ from urllib.request import urlopen
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from adaptive_security.connectors.evtx import normalize
+from adaptive_security.connectors.windows_auth import extend_auth
+from adaptive_security.detection.windows_auth import RULES, AuthRule, detect_windows_auth
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.evaluation import EvaluationCase
 from adaptive_security.evaluation_suite import Dataset, Suite, evaluate_suite
@@ -82,13 +84,16 @@ def load_capture(path: Path, capture: Capture) -> list[SecurityEvent]:
     return events
 
 
-def run(reservation_path: Path, destination: Path, capture_directory: Path | None = None
+def run(reservation_path: Path, destination: Path, capture_directory: Path | None = None,
+        development_rule: AuthRule | None = None
         ) -> dict[str, object]:
     try:
         reservation = Reservation.model_validate_json(reservation_path.read_bytes())
     except ValidationError:
         raise ValueError("invalid evaluation reservation") from None
     _verify_rules(reservation)
+    if development_rule is not None and development_rule not in RULES:
+        raise ValueError("unsupported development rule")
     if destination.exists():
         raise ValueError("output exists; choose a new directory")
     if len({c.capture_id for c in reservation.captures}) != len(reservation.captures):
@@ -109,6 +114,12 @@ def run(reservation_path: Path, destination: Path, capture_directory: Path | Non
                 with urlopen(url, timeout=30) as response:
                     original.write_bytes(response.read(5_000_001))
             events = load_capture(original, capture)
+            if development_rule is not None:
+                events = [extend_auth(event) for event in events]
+                findings = detect_windows_auth(events, development_rule)
+                (output / f"{capture.capture_id}.findings.json").write_text(
+                    json.dumps([finding.model_dump(mode="json") for finding in findings], indent=2)
+                    + "\n")
             normalized = output / f"{capture.capture_id}.events.jsonl"
             normalized.write_text("".join(e.model_dump_json() + "\n" for e in events))
             case = EvaluationCase(case_id=capture.capture_id, label=reservation.label,
@@ -118,7 +129,8 @@ def run(reservation_path: Path, destination: Path, capture_directory: Path | Non
             datasets.append(Dataset(
                 dataset_id=capture.capture_id, cases_file=cases.name,
                 cases_sha256=sha256(cases.read_bytes()).hexdigest(), kind="captured",
-                partition=reservation.partition, capture_id=capture.capture_id,
+                partition="development" if development_rule else reservation.partition,
+                capture_id=capture.capture_id,
                 capture_sha256=capture.capture_sha256, label_reference=capture.label_reference,
             ))
             inventory.append({"capture_id": capture.capture_id, "records": len(events),
@@ -127,7 +139,8 @@ def run(reservation_path: Path, destination: Path, capture_directory: Path | Non
                               "mapped_records": sum(e.action is not None for e in events),
                               "logon_failure_records": sum(e.action == "logon" and
                                                            e.outcome == "failure" for e in events)})
-        suite = Suite(version=1, rule_id=reservation.rule_id, datasets=tuple(datasets))
+        suite = Suite(version=1, rule_id=development_rule or reservation.rule_id,
+                      datasets=tuple(datasets))
         suite_path = output / "evaluation-suite.json"
         suite_path.write_text(suite.model_dump_json(indent=2) + "\n")
         report = evaluate_suite(suite_path)
@@ -138,6 +151,16 @@ def run(reservation_path: Path, destination: Path, capture_directory: Path | Non
                        "interpretation": "Independent publisher-designated attack cases; "
                                          "case-level misses include missing telemetry coverage. "
                                          "No thresholds changed after observing these captures."})
+        if development_rule is not None:
+            root = Path(__file__).parent
+            report.update({
+                "baseline_rule_commit": report.pop("frozen_rule_commit"),
+                "development_rule_sha256": {
+                    name: sha256((root / name).read_bytes()).hexdigest()
+                    for name in ("connectors/windows_auth.py", "detection/windows_auth.py")},
+                "interpretation": "Previously inspected captures reused for development. "
+                                  "No held-out performance claim; fresh validation required.",
+            })
         (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
         for path in output.iterdir():
             os.chmod(path, 0o600)
@@ -150,9 +173,11 @@ def main() -> None:
     parser.add_argument("reservation", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--capture-directory", type=Path, help="local pinned EVTX files")
+    parser.add_argument("--development-rule", choices=RULES,
+                        help="opt-in new rule; inspected captures become development data")
     args = parser.parse_args()
     try:
-        report = run(args.reservation, args.output, args.capture_directory)
+        report = run(args.reservation, args.output, args.capture_directory, args.development_rule)
     except (OSError, ValueError) as error:
         parser.error(str(error))
     rows = report["datasets"]
