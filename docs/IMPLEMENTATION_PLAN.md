@@ -169,3 +169,9 @@ and private EVTX preparation command. No auditing changes, generated attacks or 
 labels are included. Native Windows CI exports existing logs and verifies Python record preservation;
 this integration check does not complete representative benign or fresh labeled attack validation.
 See [Windows collection](WINDOWS_CAPTURE_COLLECTION.md) for the Windows-to-Mac workflow.
+
+Offline EVTX review is available in the investigation UI through authenticated read-only
+endpoints. It validates bounded stored bundles, displays labels/partitions/checksums and
+finding evidence separately from all capture records, and leaves live incident state untouched.
+See [offline review](OFFLINE_REVIEW.md) for the Mac workflow. Fresh attack and representative
+benign validation remain open.

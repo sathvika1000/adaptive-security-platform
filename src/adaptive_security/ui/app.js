@@ -9,6 +9,13 @@ let contextOffset = 0;
 let selected = null;
 let revision = 0;
 let session = 0;
+let activeView = "live";
+let offlineRevision = 0;
+let offlineEventRevision = 0;
+let offlineCapture = null;
+let offlineFinding = null;
+let offlineOffset = 0;
+let offlineEvidence = true;
 
 function element(tag, className, value) {
   const node = document.createElement(tag);
@@ -56,7 +63,7 @@ function showFailure(error) {
 async function incidents(offset = 0) {
   const currentSession = session;
   const page = await read(`/v1/incidents?limit=${PAGE_SIZE}&offset=${offset}`);
-  if (currentSession !== session) return;
+  if (currentSession !== session || activeView !== "live") return;
   incidentOffset = offset;
   const list = el("incident-list");
   list.replaceChildren();
@@ -84,6 +91,7 @@ async function incidents(offset = 0) {
   el("incidents-next").disabled = page.length < PAGE_SIZE;
   el("workspace").hidden = false;
   el("forget-key").hidden = false;
+  el("view-tabs").hidden = false;
   notice("");
 }
 
@@ -180,6 +188,8 @@ function eventRow(event, supporting = false) {
   const attrs = event.attributes || {};
   let description = event.category;
   if (event.action === "logon") description = `Logon ${event.outcome || "attempt"}${user ? ` · ${user}` : ""}`;
+  else if (event.action === "explicit_credentials") description = `Credential attempt${user ? ` · Target: ${user}` : ""}`;
+  else if (event.action === "kerberos_preauth") description = `Kerberos preauthentication failure${user ? ` · Target: ${user}` : ""}`;
   else if (event.action === "service_ticket_request") {
     description = `Service ticket · ${attrs.service_name || "Unknown service"}${user ? ` · Requester: ${user}` : ""}`;
   }
@@ -193,16 +203,31 @@ function eventRow(event, supporting = false) {
     title.append(badge);
   }
   row.append(title);
-  const severity = event.severity === 0 && ["otrf", "otrf-network"].includes(event.source) ?
+  const severity = event.severity === 0 && ["otrf", "otrf-network", "evtx"].includes(event.source) ?
     "Severity unassigned" : `Severity ${event.severity}/10`;
   row.append(element("div", "event-detail", `${date(event.event_time)} · ${severity}`));
   if (host) row.append(element("div", "event-detail",
-    `${event.action === "service_ticket_request" ? "Domain controller" : "Endpoint"}: ${host}`));
+    `${["service_ticket_request", "kerberos_preauth"].includes(event.action) ? "Domain controller" : "Endpoint"}: ${host}`));
   if (origin) row.append(element("div", "event-detail", `Origin: ${origin}`));
   if (event.action === "service_ticket_request") {
     row.append(element("div", "event-detail",
       `Ticket encryption: ${attrs.ticket_encryption_type === 23 ? "RC4 (0x17)" : attrs.ticket_encryption_type ?? "Unknown"} · ` +
       `Ticket status: ${attrs.ticket_status === 0 ? "Issued successfully" : attrs.ticket_status ?? "Unknown"}`));
+  }
+  if (event.action === "explicit_credentials") {
+    const raw = attrs.raw || {};
+    const caller = raw.SubjectUserName || raw.SubjectUserSid || "Unknown caller";
+    row.append(element("div", "event-detail", `Caller: ${caller} · Session: ${raw.SubjectLogonId || "Unavailable"}`));
+    row.append(element("div", "event-detail", `Process: ${raw.ProcessName || "Name unavailable"} · PID: ${raw.ProcessId || "Unavailable"}`));
+    row.append(element("div", "event-detail", `Target server: ${raw.TargetServerName || "Unavailable"} · Target logon outcome unrecorded`));
+  }
+  if (event.action === "kerberos_preauth") {
+    const code = Number.isInteger(attrs.kerberos_status) ? `0x${attrs.kerberos_status.toString(16)}` : "Unknown";
+    row.append(element("div", "event-detail", `Preauthentication status: ${code}`));
+  }
+  if (event.source === "evtx") {
+    row.append(element("div", "event-detail", `Windows event ${attrs.windows_event_id} · Record ${attrs.evtx_record_id || "Unavailable"}`));
+    row.append(element("div", "event-detail", attrs.observation_time_basis || "Collection observation time unavailable"));
   }
   if (supporting) {
     row.append(element("p", "explanation", attrs.explanation || "Supporting context; not detection evidence."));
@@ -259,11 +284,14 @@ el("access-form").addEventListener("submit", async (event) => {
   apiKey = el("api-key").value.trim();
   el("api-key").value = "";
   resetDetail();
+  resetOffline();
+  setView("live");
   try {
     await incidents(0);
   } catch (error) {
     apiKey = "";
     el("workspace").hidden = true;
+    el("view-tabs").hidden = true;
     el("forget-key").hidden = true;
     showFailure(error);
   }
@@ -272,6 +300,9 @@ el("forget-key").addEventListener("click", () => {
   session += 1;
   apiKey = "";
   resetDetail();
+  resetOffline();
+  el("view-tabs").hidden = true;
+  el("offline-workspace").hidden = true;
   el("incident-list").replaceChildren();
   el("workspace").hidden = true;
   el("forget-key").hidden = true;
@@ -332,5 +363,164 @@ for (const [id, delta] of [["events-prev", -PAGE_SIZE], ["events-next", PAGE_SIZ
 for (const [id, delta] of [["context-prev", -PAGE_SIZE], ["context-next", PAGE_SIZE]]) {
   el(id).addEventListener("click", async () => {
     try { await context(contextOffset + delta); } catch (error) { showFailure(error); }
+  });
+}
+
+function resetOffline() {
+  offlineRevision += 1;
+  offlineEventRevision += 1;
+  offlineCapture = null;
+  offlineFinding = null;
+  for (const id of ["offline-captures", "offline-findings", "offline-events"]) el(id).replaceChildren();
+  for (const id of ["offline-provenance", "offline-capture-provenance", "offline-meta", "offline-title", "offline-rule", "offline-coverage", "offline-event-scope", "offline-page"]) el(id).textContent = "";
+  el("offline-detail").hidden = true;
+  el("offline-empty").hidden = false;
+}
+
+function setView(view) {
+  activeView = view;
+  revision += 1;
+  offlineRevision += 1;
+  offlineEventRevision += 1;
+  el("workspace").hidden = view !== "live";
+  el("offline-workspace").hidden = view !== "offline";
+  el("view-live").setAttribute("aria-pressed", String(view === "live"));
+  el("view-offline").setAttribute("aria-pressed", String(view === "offline"));
+  el("analyst-key").value = "";
+}
+
+async function offlineIndex() {
+  const current = ++offlineRevision;
+  const currentSession = session;
+  const run = await read("/v1/offline-review");
+  if (current !== offlineRevision || currentSession !== session || activeView !== "offline") return;
+  el("offline-captures").replaceChildren();
+  if (!run.configured) {
+    el("offline-captures").append(element("p", "empty-copy",
+      "No offline output is configured. Start the review server with ASP_OFFLINE_REVIEW_PATH pointing to an EVTX evaluation output directory."));
+    notice("");
+    return;
+  }
+  el("offline-rule").textContent = `Stored rule: ${run.rule_id} · Live deployment disabled for these rules`;
+  el("offline-provenance").textContent = JSON.stringify(run.provenance, null, 2);
+  for (const capture of run.captures) {
+    const button = element("button", "incident-card");
+    button.type = "button";
+    button.dataset.captureId = capture.capture_id;
+    button.setAttribute("aria-pressed", "false");
+    button.append(element("div", "card-title", capture.capture_id));
+    button.append(element("div", "card-subtitle", `${capture.partition} · ${capture.label} · ${capture.verdict.replaceAll("_", " ")}`));
+    button.append(element("div", "card-foot", `${capture.records} records · ${capture.finding_count} candidate findings`));
+    button.addEventListener("click", () => selectOfflineCapture(capture.capture_id));
+    el("offline-captures").append(button);
+  }
+  notice("");
+}
+
+async function selectOfflineCapture(identifier) {
+  const current = ++offlineRevision;
+  const currentSession = session;
+  offlineEventRevision += 1;
+  el("offline-detail").hidden = true;
+  try {
+    const capture = await read(`/v1/offline-review/captures/${encodeURIComponent(identifier)}`);
+    if (current !== offlineRevision || currentSession !== session || activeView !== "offline") return;
+    offlineCapture = capture;
+    offlineFinding = capture.findings[0] || null;
+    offlineEvidence = Boolean(offlineFinding);
+    const summary = capture.summary;
+    el("offline-empty").hidden = true;
+    el("offline-detail").hidden = false;
+    el("offline-title").textContent = summary.capture_id;
+    el("offline-meta").textContent = `${summary.partition} · Case label: ${summary.label} · ${summary.verdict.replaceAll("_", " ")} · ${summary.records} records`;
+    el("offline-coverage").textContent = summary.selected_event_records === 0 ?
+      "No records of the selected Windows event type are present. This capture does not exercise that event family." :
+      `${summary.selected_event_records} records of the selected event type are present. Required origins, statuses and distinct-account thresholds still determine eligibility. ` +
+      (summary.label === "unlabeled" ? "This capture is excluded from accuracy calculations." :
+        "This is a declared capture-level label; individual background records are not automatically labeled.");
+    el("offline-capture-provenance").textContent = JSON.stringify(capture.metadata, null, 2);
+    for (const button of el("offline-captures").querySelectorAll("button")) {
+      button.classList.toggle("selected", button.dataset.captureId === identifier);
+      button.setAttribute("aria-pressed", String(button.dataset.captureId === identifier));
+    }
+    renderOfflineFindings();
+    await offlineEvents(0);
+    if (current === offlineRevision && currentSession === session) notice("");
+  } catch (error) {
+    if (current === offlineRevision && currentSession === session) showFailure(error);
+  }
+}
+
+function renderOfflineFindings() {
+  const list = el("offline-findings");
+  list.replaceChildren();
+  if (!offlineCapture.findings.length) list.append(element("p", "empty-copy",
+    "No candidate findings in this stored run. This does not establish benign activity."));
+  for (const finding of offlineCapture.findings) {
+    const button = element("button", "incident-card");
+    button.type = "button";
+    button.classList.toggle("selected", finding.incident_id === offlineFinding?.incident_id);
+    button.setAttribute("aria-pressed", String(finding.incident_id === offlineFinding?.incident_id));
+    button.append(element("div", "card-title", finding.title));
+    button.append(element("div", "card-subtitle", `${finding.incident_id} · ${finding.event_ids.length} evidence records`));
+    button.append(element("div", "card-foot", `${date(finding.first_seen)} → ${date(finding.last_seen)}`));
+    const rule = finding.signals[0];
+    button.append(element("p", "explanation", `${rule.rule_id} v${rule.rule_version} · Offline candidate. ` +
+      (rule.rule_id === "auth.explicit_credential_fanout" ?
+        "Five distinct target accounts in five minutes from a common caller/session/process/server. Credential attempts do not prove target logon success or compromise." :
+        "Five distinct accounts with bad-password preauthentication failures in five minutes from a common client and domain controller. This does not prove compromise.")));
+    button.addEventListener("click", async () => {
+      offlineFinding = finding;
+      offlineEvidence = true;
+      renderOfflineFindings();
+      try { await offlineEvents(0); } catch (error) { showFailure(error); }
+    });
+    list.append(button);
+  }
+}
+
+async function offlineEvents(offset) {
+  if (!offlineCapture) return;
+  const current = ++offlineEventRevision;
+  const currentCapture = offlineRevision;
+  const currentSession = session;
+  const finding = offlineEvidence ? offlineFinding : null;
+  const query = finding ? `&finding_id=${encodeURIComponent(finding.incident_id)}` : "";
+  el("offline-evidence").disabled = !offlineFinding;
+  el("offline-evidence").setAttribute("aria-pressed", String(Boolean(finding)));
+  el("offline-all").setAttribute("aria-pressed", String(!finding));
+  el("offline-event-scope").textContent = finding ?
+    `Evidence for ${finding.incident_id} · ${finding.event_ids.length} records` :
+    `All ${offlineCapture.summary.records} capture records, including unsupported/background events`;
+  el("offline-events").replaceChildren(element("p", "empty-copy", "Loading records…"));
+  const page = await read(`/v1/offline-review/captures/${encodeURIComponent(offlineCapture.summary.capture_id)}/events?limit=${PAGE_SIZE}&offset=${offset}${query}`);
+  if (current !== offlineEventRevision || currentCapture !== offlineRevision || currentSession !== session || activeView !== "offline") return;
+  offlineOffset = offset;
+  el("offline-events").replaceChildren();
+  if (!page.length) el("offline-events").append(element("p", "empty-copy", "No records on this page."));
+  for (const event of page) el("offline-events").append(eventRow(event));
+  el("offline-page").textContent = `Page ${Math.floor(offset / PAGE_SIZE) + 1}`;
+  el("offline-prev").disabled = offset === 0;
+  el("offline-next").disabled = offset + page.length >= (finding ? finding.event_ids.length : offlineCapture.summary.records);
+}
+
+el("view-live").addEventListener("click", async () => {
+  setView("live");
+  try { await incidents(incidentOffset); } catch (error) { showFailure(error); }
+});
+el("view-offline").addEventListener("click", async () => {
+  resetOffline();
+  setView("offline");
+  try { await offlineIndex(); } catch (error) { showFailure(error); }
+});
+for (const [id, evidence] of [["offline-evidence", true], ["offline-all", false]]) {
+  el(id).addEventListener("click", async () => {
+    offlineEvidence = evidence;
+    try { await offlineEvents(0); } catch (error) { showFailure(error); }
+  });
+}
+for (const [id, delta] of [["offline-prev", -PAGE_SIZE], ["offline-next", PAGE_SIZE]]) {
+  el(id).addEventListener("click", async () => {
+    try { await offlineEvents(offlineOffset + delta); } catch (error) { showFailure(error); }
   });
 }

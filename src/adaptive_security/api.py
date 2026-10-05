@@ -20,6 +20,7 @@ from adaptive_security.connectors.wazuh import WazuhAlert, WazuhConnector
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentTransition
 from adaptive_security.http import AlertBodyLimit
+from adaptive_security.offline_review import CaptureSnapshot, ReviewSnapshot, ReviewSource
 from adaptive_security.service import IngestionService
 from adaptive_security.store import RetentionPreview, SQLiteStore
 
@@ -86,11 +87,13 @@ _UI_HEADERS = {
 def create_app(
     db_path: str | None = None, api_key: str | None = None,
     analyst_keys: dict[str, str | dict[str, object]] | None = None,
+    offline_review_path: str | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Adaptive Security Platform", version="0.1.0")
     app.add_middleware(AlertBodyLimit)
     store = SQLiteStore(db_path or os.environ.get("ASP_DB_PATH", "./security.db"))
     service = IngestionService(store)
+    review_source = ReviewSource(offline_review_path or os.environ.get("ASP_OFFLINE_REVIEW_PATH"))
     key = api_key if api_key is not None else os.environ.get("ASP_API_KEY")
     configured = (analyst_keys if analyst_keys is not None else
                   json.loads(os.environ.get("ASP_ANALYST_KEYS_JSON") or "{}"))
@@ -108,6 +111,8 @@ def create_app(
             response = await call_next(request)
             status_code = response.status_code
             response.headers["X-Request-ID"] = request_id
+            if request.url.path.startswith("/v1/offline-review"):
+                response.headers["Cache-Control"] = "no-store"
             return response
         finally:
             logger.info(
@@ -178,6 +183,51 @@ def create_app(
             raise HTTPException(status_code=404, detail="Not found")
         body = files("adaptive_security").joinpath("ui", asset).read_bytes()
         return Response(body, media_type=media_type, headers=_UI_HEADERS)
+
+    def review_snapshot() -> ReviewSnapshot | None:
+        try:
+            return review_source.snapshot()
+        except (OSError, ValueError, KeyError, TypeError):
+            raise HTTPException(status_code=503, detail="Offline review bundle unavailable; "
+                                "check configured output files") from None
+
+    def review_capture(capture_id: str) -> CaptureSnapshot:
+        snapshot = review_snapshot()
+        if snapshot is None or capture_id not in snapshot.captures:
+            raise HTTPException(status_code=404, detail="Offline capture not found")
+        return snapshot.captures[capture_id]
+
+    @app.get("/v1/offline-review", dependencies=[Depends(authorize)])
+    def offline_index() -> dict[str, object]:
+        snapshot = review_snapshot()
+        if snapshot is None:
+            return {"configured": False, "captures": []}
+        return {"configured": True, "rule_id": snapshot.rule_id,
+                "provenance": snapshot.provenance,
+                "captures": [c.summary.model_dump() for c in snapshot.captures.values()]}
+
+    @app.get("/v1/offline-review/captures/{capture_id}", dependencies=[Depends(authorize)])
+    def offline_capture(capture_id: str) -> dict[str, object]:
+        capture = review_capture(capture_id)
+        return {"summary": capture.summary.model_dump(), "metadata": capture.metadata,
+                "findings": [i.model_dump(mode="json") for i in capture.findings]}
+
+    @app.get("/v1/offline-review/captures/{capture_id}/events",
+             response_model=list[SecurityEvent], dependencies=[Depends(authorize)])
+    def offline_events(
+        capture_id: str, finding_id: str | None = None,
+        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> list[SecurityEvent]:
+        capture = review_capture(capture_id)
+        events = capture.events
+        if finding_id is not None:
+            finding = next((i for i in capture.findings if i.incident_id == finding_id), None)
+            if finding is None:
+                raise HTTPException(status_code=404, detail="Offline finding not found")
+            references = set(finding.event_ids)
+            events = tuple(e for e in events if e.event_id in references)
+        return list(events[offset:offset + limit])
 
     @app.post("/v1/events/wazuh", response_model=IngestionResult, dependencies=[Depends(authorize)])
     def ingest_wazuh_event(payload: WazuhAlert) -> IngestionResult:
