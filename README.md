@@ -421,3 +421,8 @@ out of accuracy calculations. Representative benign validation is still pending.
 A read-only [Windows collection guide](docs/WINDOWS_CAPTURE_COLLECTION.md) now includes a native
 Security-log export script and a Mac/Linux preparation command. Both preserve collection provenance
 and create unlabeled development inputs; Windows CI verifies the export-to-Python workflow.
+
+Existing offline EVTX findings can now be reviewed on a Mac in the authenticated investigation
+UI, with capture labels, provenance, candidate evidence, and all-record pagination. See
+[offline review](docs/OFFLINE_REVIEW.md) for launch commands. No Windows installation is required
+for this view; representative benign validation remains pending.

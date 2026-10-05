@@ -30,6 +30,52 @@
       </form>
     </section>
     <p id="message" class="message" role="status" aria-live="polite"></p>
+    <nav id="view-tabs" class="view-tabs" aria-label="Workspace view" hidden>
+      <button id="view-live" type="button" class="secondary" aria-pressed="true">Incidents</button>
+      <button id="view-offline" type="button" class="secondary" aria-pressed="false">Offline captures</button>
+    </nav>
+    <section id="offline-workspace" hidden>
+      <div class="offline-banner">
+        <p class="kicker">Offline evidence review · Read-only</p>
+        <h2>Captured Windows activity</h2>
+        <p>These are stored evaluation results. Capture labels and partitions are declarations;
+          findings do not establish production accuracy or enable live detection.</p>
+        <p id="offline-rule" class="muted"></p>
+        <details class="evidence-details"><summary>Run provenance and limitations</summary>
+          <pre id="offline-provenance"></pre></details>
+      </div>
+      <div class="workspace">
+        <section class="list-panel" aria-labelledby="offline-captures-title">
+          <div class="section-head"><h2 id="offline-captures-title">Captures</h2></div>
+          <div id="offline-captures" class="incident-list"></div>
+        </section>
+        <section class="detail-panel" aria-labelledby="offline-title">
+          <div id="offline-empty" class="empty-state"><h2>Select a capture</h2>
+            <p>Review candidate findings and original event records.</p></div>
+          <div id="offline-detail" hidden>
+            <h2 id="offline-title"></h2>
+            <p id="offline-meta" class="muted"></p>
+            <p id="offline-coverage" class="explanation"></p>
+            <details class="evidence-details"><summary>Capture provenance and label basis</summary>
+              <pre id="offline-capture-provenance"></pre></details>
+            <h3 class="history-head">Candidate findings</h3>
+            <div id="offline-findings" class="incident-list"></div>
+            <div class="section-head timeline-head"><h3>Event timeline</h3></div>
+            <div class="view-tabs">
+              <button id="offline-evidence" type="button" class="secondary">Finding evidence</button>
+              <button id="offline-all" type="button" class="secondary">All capture records</button>
+            </div>
+            <p id="offline-event-scope" class="muted"></p>
+            <div id="offline-events" class="event-list"></div>
+            <div class="pager">
+              <button id="offline-prev" type="button" class="secondary">Previous</button>
+              <span id="offline-page"></span>
+              <button id="offline-next" type="button" class="secondary">Next</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
     <main id="workspace" class="workspace" hidden>
       <section class="list-panel" aria-labelledby="incidents-title">
         <div class="section-head">
