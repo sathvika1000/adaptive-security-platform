@@ -426,3 +426,7 @@ Existing offline EVTX findings can now be reviewed on a Mac in the authenticated
 UI, with capture labels, provenance, candidate evidence, and all-record pagination. See
 [offline review](docs/OFFLINE_REVIEW.md) for launch commands. No Windows installation is required
 for this view; representative benign validation remains pending.
+
+Offline findings also support persistent analyst dispositions and supporting notes, with
+revision history, named review permission, and conflict protection. Assessments stay separate
+from detector verdicts and capture labels; see the [review guide](docs/OFFLINE_REVIEW.md).

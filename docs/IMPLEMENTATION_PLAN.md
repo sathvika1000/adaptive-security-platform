@@ -175,3 +175,8 @@ endpoints. It validates bounded stored bundles, displays labels/partitions/check
 finding evidence separately from all capture records, and leaves live incident state untouched.
 See [offline review](OFFLINE_REVIEW.md) for the Mac workflow. Fresh attack and representative
 benign validation remain open.
+
+Offline analyst assessment now appends disposition/note revisions in SQLite, bound to
+capture metadata, run provenance, finding, and evidence. Named review permission, request
+attribution, pagination, restart/backup persistence, and revision conflict checks are covered.
+Analyst judgments do not change evaluation labels or scores.

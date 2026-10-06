@@ -79,3 +79,11 @@ h3 { font-size: 17px; margin: 0; }
 .offline-banner h2 { margin: 8px 0; }
 .offline-banner p { line-height: 1.6; }
 #offline-title { overflow-wrap: anywhere; margin: 4px 0 10px; }
+
+select, textarea { font: inherit; border: 1px solid #b9cbd0; border-radius: 9px; padding: 10px 12px; background: white; color: inherit; }
+#offline-review-form { display: grid; gap: 8px; margin-top: 16px; }
+#offline-review-form label { margin-bottom: 0; }
+#offline-review-form textarea { resize: vertical; width: 100%; }
+#offline-review-form .hint { margin: 0; }
+#offline-review-form button { justify-self: start; }
+.review-note { white-space: pre-wrap; overflow-wrap: anywhere; }

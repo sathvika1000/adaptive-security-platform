@@ -96,7 +96,7 @@ def test_identity_reports_legacy_shared_mode_without_attributing_actor(tmp_path:
     client = TestClient(create_app(str(tmp_path / "events.db"), "shared", {}))
     response = client.get("/v1/auth/identity", headers={"X-API-Key": "shared"})
     assert response.status_code == 200
-    assert response.json() == {"mode": "shared", "actor": None, "permissions": ["close"]}
+    assert response.json() == {"mode": "shared", "actor": None, "permissions": ["close", "review"]}
 
 
 def test_read_only_analyst_cannot_close_incident(tmp_path: Path) -> None:

@@ -16,6 +16,9 @@ let offlineCapture = null;
 let offlineFinding = null;
 let offlineOffset = 0;
 let offlineEvidence = true;
+let reviewRevision = 0;
+let reviewState = null;
+let reviewOffset = 0;
 
 function element(tag, className, value) {
   const node = document.createElement(tag);
@@ -367,6 +370,7 @@ for (const [id, delta] of [["context-prev", -PAGE_SIZE], ["context-next", PAGE_S
 }
 
 function resetOffline() {
+  resetAssessment();
   offlineRevision += 1;
   offlineEventRevision += 1;
   offlineCapture = null;
@@ -387,6 +391,8 @@ function setView(view) {
   el("view-live").setAttribute("aria-pressed", String(view === "live"));
   el("view-offline").setAttribute("aria-pressed", String(view === "offline"));
   el("analyst-key").value = "";
+  el("offline-analyst-key").value = "";
+  reviewRevision += 1;
 }
 
 async function offlineIndex() {
@@ -421,6 +427,7 @@ async function selectOfflineCapture(identifier) {
   const current = ++offlineRevision;
   const currentSession = session;
   offlineEventRevision += 1;
+  resetAssessment();
   el("offline-detail").hidden = true;
   try {
     const capture = await read(`/v1/offline-review/captures/${encodeURIComponent(identifier)}`);
@@ -444,7 +451,7 @@ async function selectOfflineCapture(identifier) {
       button.setAttribute("aria-pressed", String(button.dataset.captureId === identifier));
     }
     renderOfflineFindings();
-    await offlineEvents(0);
+    await Promise.all([offlineEvents(0), loadAssessment(0)]);
     if (current === offlineRevision && currentSession === session) notice("");
   } catch (error) {
     if (current === offlineRevision && currentSession === session) showFailure(error);
@@ -470,10 +477,11 @@ function renderOfflineFindings() {
         "Five distinct target accounts in five minutes from a common caller/session/process/server. Credential attempts do not prove target logon success or compromise." :
         "Five distinct accounts with bad-password preauthentication failures in five minutes from a common client and domain controller. This does not prove compromise.")));
     button.addEventListener("click", async () => {
+      resetAssessment();
       offlineFinding = finding;
       offlineEvidence = true;
       renderOfflineFindings();
-      try { await offlineEvents(0); } catch (error) { showFailure(error); }
+      try { await Promise.all([offlineEvents(0), loadAssessment(0)]); } catch (error) { showFailure(error); }
     });
     list.append(button);
   }
@@ -522,5 +530,98 @@ for (const [id, evidence] of [["offline-evidence", true], ["offline-all", false]
 for (const [id, delta] of [["offline-prev", -PAGE_SIZE], ["offline-next", PAGE_SIZE]]) {
   el(id).addEventListener("click", async () => {
     try { await offlineEvents(offlineOffset + delta); } catch (error) { showFailure(error); }
+  });
+}
+
+function resetAssessment() {
+  reviewRevision += 1;
+  reviewState = null;
+  reviewOffset = 0;
+  el("offline-review-panel").hidden = true;
+  el("offline-note").value = "";
+  el("offline-analyst-key").value = "";
+  el("offline-disposition").value = "needs_review";
+  el("offline-review-history").replaceChildren();
+  el("offline-review-current").textContent = "";
+  el("offline-review-page").textContent = "";
+  el("offline-save-review").disabled = true;
+}
+
+function assessmentPath() {
+  return `/v1/offline-review/captures/${encodeURIComponent(offlineCapture.summary.capture_id)}/findings/${encodeURIComponent(offlineFinding.incident_id)}/reviews`;
+}
+
+async function loadAssessment(offset = 0) {
+  if (!offlineFinding) return;
+  const current = ++reviewRevision;
+  const currentCapture = offlineRevision;
+  const currentSession = session;
+  const path = assessmentPath();
+  el("offline-save-review").disabled = true;
+  const page = await read(`${path}?limit=${PAGE_SIZE}&offset=${offset}`);
+  if (current !== reviewRevision || currentCapture !== offlineRevision || currentSession !== session || activeView !== "offline") return;
+  reviewState = {path, revision: page.revision, review_key: page.review_key};
+  reviewOffset = offset;
+  el("offline-review-panel").hidden = false;
+  el("offline-save-review").disabled = false;
+  if (offset === 0) {
+    const latest = page.entries[0];
+    el("offline-review-current").textContent = latest ?
+      `Current assessment: ${latest.disposition.replaceAll("_", " ")} · Revision ${latest.revision}` :
+      "No assessment saved. Needs review.";
+    el("offline-disposition").value = latest?.disposition || "needs_review";
+  }
+  el("offline-review-history").replaceChildren();
+  for (const entry of page.entries) {
+    const row = element("article", "history-item");
+    row.append(element("strong", "", `Revision ${entry.revision} · ${entry.disposition.replaceAll("_", " ")}`));
+    row.append(element("p", "muted", `${date(entry.occurred_at)} · ${entry.actor || "Shared key (unattributed)"}`));
+    row.append(element("p", "review-note", entry.note));
+    el("offline-review-history").append(row);
+  }
+  el("offline-review-page").textContent = `Page ${Math.floor(offset / PAGE_SIZE) + 1}`;
+  el("offline-review-prev").disabled = offset === 0;
+  el("offline-review-next").disabled = offset + page.entries.length >= page.revision;
+}
+
+el("offline-review-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!reviewState || activeView !== "offline") return;
+  const state = reviewState;
+  const current = reviewRevision;
+  const currentSession = session;
+  const note = el("offline-note").value.trim();
+  if (!note) { notice("Explain the assessment before saving.", true); return; }
+  const analystKey = el("offline-analyst-key").value;
+  el("offline-analyst-key").value = "";
+  el("offline-save-review").disabled = true;
+  try {
+    const response = await fetch(state.path, {
+      method: "POST", cache: "no-store", redirect: "error",
+      headers: {"X-API-Key": apiKey, "X-Analyst-Key": analystKey, "Content-Type": "application/json"},
+      body: JSON.stringify({disposition: el("offline-disposition").value, note,
+        expected_revision: state.revision, review_key: state.review_key}),
+    });
+    if (current !== reviewRevision || currentSession !== session || activeView !== "offline") return;
+    if (response.status === 409) {
+      await loadAssessment(0);
+      notice("The review or finding changed. Your note is retained; check the latest assessment before saving again.", true);
+      return;
+    }
+    if (!response.ok) throw new Error(response.status === 401 ? "Analyst key was rejected." :
+      response.status === 403 ? "This analyst key needs review permission." :
+      `Could not save assessment (HTTP ${response.status}).`);
+    el("offline-note").value = "";
+    await loadAssessment(0);
+    if (currentSession === session && activeView === "offline" && reviewState?.path === state.path) notice("Assessment saved; capture labels and detector results are unchanged.");
+  } catch (error) {
+    if (current === reviewRevision && currentSession === session) showFailure(error);
+  } finally {
+    if (currentSession === session && reviewState?.path === state.path) el("offline-save-review").disabled = false;
+  }
+});
+for (const [id, delta] of [["offline-review-prev", -PAGE_SIZE], ["offline-review-next", PAGE_SIZE]]) {
+  el(id).addEventListener("click", async () => {
+    try { await loadAssessment(reviewOffset + delta); } catch (error) { showFailure(error); }
   });
 }
