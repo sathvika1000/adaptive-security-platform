@@ -213,3 +213,160 @@ def test_review_file_paths_and_size_limits(tmp_path):
     (tmp_path / "large").write_bytes(b"xxxx")
     with pytest.raises(ValueError, match="too large"):
         BundleReader(tmp_path).read("large", maximum=3)
+
+
+def review_endpoint(client):
+    capture = client.get("/v1/offline-review/captures/sample", headers=HEADERS).json()
+    finding_id = capture["findings"][0]["incident_id"]
+    return f"/v1/offline-review/captures/sample/findings/{finding_id}/reviews"
+
+
+def test_assessment_history_conflict_restart_and_backup(tmp_path, monkeypatch):
+    from adaptive_security.backup import create_backup, verify_backup
+
+    output = bundle(tmp_path, monkeypatch)
+    original_files = {p.name: p.read_bytes() for p in output.iterdir() if p.is_file()}
+    database = tmp_path / "live.db"
+    client = TestClient(create_app(str(database), KEY, {}, offline_review_path=str(output)))
+    url = review_endpoint(client)
+    assert client.get(url).status_code == 401
+    initial = client.get(url, headers=HEADERS).json()
+    assert initial["revision"] == 0 and initial["entries"] == []
+    edit = dict(
+        review_key=initial["review_key"],
+        expected_revision=0,
+        disposition="suspicious",
+        note=" Review original XML <script>literal</script> ",
+    )
+    assert client.post(url, json=edit).status_code == 401
+    first = client.post(url, json=edit, headers=HEADERS)
+    assert first.status_code == 201
+    assert first.json()["actor"] is None
+    assert first.json()["request_id"] == first.headers["X-Request-ID"]
+    assert first.json()["note"] == edit["note"].strip()
+    assert client.post(url, json=edit, headers=HEADERS).status_code == 409
+    edit.update(expected_revision=1, disposition="inconclusive", note="Need other evidence")
+    assert client.post(url, json=edit, headers=HEADERS).json()["revision"] == 2
+    restarted = TestClient(create_app(str(database), KEY, {}, offline_review_path=str(output)))
+    page = restarted.get(url + "?limit=1", headers=HEADERS).json()
+    assert page["revision"] == 2 and len(page["entries"]) == 1
+    assert page["entries"][0]["disposition"] == "inconclusive"
+    assert (
+        restarted.get(url + "?limit=1&offset=1", headers=HEADERS).json()["entries"][0]
+        == first.json()
+    )
+    assert restarted.get(url + "?limit=101", headers=HEADERS).status_code == 422
+    assert restarted.get("/v1/incidents", headers=HEADERS).json() == []
+    assert original_files == {p.name: p.read_bytes() for p in output.iterdir() if p.is_file()}
+    snapshot = tmp_path / "backup.db"
+    create_backup(database, snapshot)
+    verify_backup(snapshot)
+    restored = TestClient(create_app(str(snapshot), KEY, {}, offline_review_path=str(output)))
+    assert restored.get(url, headers=HEADERS).json() == restarted.get(url, headers=HEADERS).json()
+
+
+def test_named_review_permission_and_server_attribution(tmp_path, monkeypatch):
+    output = bundle(tmp_path, monkeypatch)
+    keys = {
+        "reviewer": {"key": "r" * 64, "permissions": ["review"]},
+        "closer": {"key": "c" * 64, "permissions": ["close"]},
+        "reader": {"key": "d" * 64, "permissions": []},
+    }
+    client = TestClient(create_app(str(tmp_path / "live.db"), KEY, keys, str(output)))
+    url = review_endpoint(client)
+    initial = client.get(url, headers=HEADERS).json()
+    edit = dict(
+        review_key=initial["review_key"],
+        expected_revision=0,
+        disposition="benign_activity",
+        note="Expected administrative activity",
+    )
+    assert client.post(url, json=edit, headers=HEADERS).status_code == 401
+    for token, status in [("wrong", 401), ("c" * 64, 403), ("d" * 64, 403)]:
+        assert (
+            client.post(url, json=edit, headers={**HEADERS, "X-Analyst-Key": token}).status_code
+            == status
+        )
+    headers = {**HEADERS, "X-Analyst-Key": "r" * 64}
+    assert client.get("/v1/auth/identity", headers=headers).json()["permissions"] == ["review"]
+    assert client.post(url, json={**edit, "actor": "fake"}, headers=headers).status_code == 422
+    response = client.post(url, json=edit, headers=headers)
+    assert response.status_code == 201 and response.json()["actor"] == "reviewer"
+    assert "r" * 64 not in response.text
+    assert client.post("/v1/incidents/missing/close", headers=headers).status_code == 403
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        dict(note="  "),
+        dict(note="x" * 2001),
+        dict(disposition="true_positive"),
+        dict(expected_revision=-1),
+        dict(expected_revision=True),
+        dict(review_key="wrong"),
+    ],
+)
+def test_assessment_invalid_input_cannot_write(tmp_path, monkeypatch, change):
+    output = bundle(tmp_path, monkeypatch)
+    client = TestClient(create_app(str(tmp_path / "live.db"), KEY, {}, str(output)))
+    url = review_endpoint(client)
+    initial = client.get(url, headers=HEADERS).json()
+    edit = dict(
+        review_key=initial["review_key"],
+        expected_revision=0,
+        disposition="needs_review",
+        note="Not reviewed yet",
+    )
+    assert client.post(url, json={**edit, **change}, headers=HEADERS).status_code == 422
+    assert client.get(url, headers=HEADERS).json()["revision"] == 0
+
+
+def test_review_does_not_follow_changed_capture_context(tmp_path, monkeypatch):
+    output = bundle(tmp_path, monkeypatch)
+    database = str(tmp_path / "live.db")
+    client = TestClient(create_app(database, KEY, {}, str(output)))
+    url = review_endpoint(client)
+    initial = client.get(url, headers=HEADERS).json()
+    edit = dict(
+        review_key=initial["review_key"],
+        expected_revision=0,
+        disposition="suspicious",
+        note="Initial evidence assessment",
+    )
+    assert client.post(url, json=edit, headers=HEADERS).status_code == 201
+    # Same capture and finding IDs, but different declared run provenance.
+    report_path = output / "report.json"
+    report = json.loads(report_path.read_text())
+    report["interpretation"] = "Reprocessed run with changed context"
+    report_path.write_text(json.dumps(report))
+    newer = TestClient(create_app(database, KEY, {}, str(output)))
+    state = newer.get(url, headers=HEADERS).json()
+    assert state["review_key"] != initial["review_key"] and state["revision"] == 0
+    assert newer.post(url, json=edit, headers=HEADERS).status_code == 409
+    assert (
+        newer.get(url.replace("/findings/", "/findings/missing-"), headers=HEADERS).status_code
+        == 404
+    )
+
+
+def test_concurrent_assessment_saves_have_one_winner(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from adaptive_security.offline_annotations import ReviewConflict, ReviewEdit
+    from adaptive_security.store import SQLiteStore
+
+    store = SQLiteStore(str(tmp_path / "live.db"))
+    key = "a" * 64
+    edit = ReviewEdit(review_key=key, expected_revision=0, disposition="suspicious", note="Review")
+
+    def save(request_id):
+        try:
+            store.append_offline_review(key, edit, "analyst", request_id)
+            return "saved"
+        except ReviewConflict:
+            return "conflict"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(save, ["one", "two"])) == ["conflict", "saved"]
+    assert store.offline_reviews(key, 20, 0).revision == 1

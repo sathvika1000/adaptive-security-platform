@@ -60,6 +60,35 @@
               <pre id="offline-capture-provenance"></pre></details>
             <h3 class="history-head">Candidate findings</h3>
             <div id="offline-findings" class="incident-list"></div>
+            <section id="offline-review-panel" hidden aria-labelledby="offline-review-title">
+              <h3 id="offline-review-title" class="history-head">Analyst assessment</h3>
+              <p class="hint">Assessment is separate from capture labels and detector results.
+                Saves append history. Shared-key reviews have no named attribution.</p>
+              <p id="offline-review-current" class="explanation"></p>
+              <form id="offline-review-form" autocomplete="off">
+                <label for="offline-disposition">Disposition</label>
+                <select id="offline-disposition">
+                  <option value="needs_review">Needs review</option>
+                  <option value="suspicious">Suspicious</option>
+                  <option value="benign_activity">Benign activity</option>
+                  <option value="confirmed_malicious">Confirmed malicious</option>
+                  <option value="inconclusive">Inconclusive</option>
+                </select>
+                <label for="offline-note">Assessment and supporting evidence</label>
+                <textarea id="offline-note" maxlength="2000" rows="4" required></textarea>
+                <label for="offline-analyst-key">Analyst key (when configured)</label>
+                <input id="offline-analyst-key" type="password" autocomplete="off" spellcheck="false">
+                <p class="hint">Named analyst keys must have review permission. The key is cleared after submission.</p>
+                <button id="offline-save-review" type="submit" class="primary" disabled>Save assessment</button>
+              </form>
+              <h3 class="history-head">Assessment history</h3>
+              <div id="offline-review-history" class="history-list"></div>
+              <div class="pager">
+                <button id="offline-review-prev" type="button" class="secondary">Previous reviews</button>
+                <span id="offline-review-page"></span>
+                <button id="offline-review-next" type="button" class="secondary">Next reviews</button>
+              </div>
+            </section>
             <div class="section-head timeline-head"><h3>Event timeline</h3></div>
             <div class="view-tabs">
               <button id="offline-evidence" type="button" class="secondary">Finding evidence</button>

@@ -257,3 +257,19 @@ class ReviewSource:
             if self._snapshot is None:
                 self._snapshot = load_review(self.path)
             return self._snapshot
+
+
+def finding_review_key(
+    snapshot: ReviewSnapshot, capture: CaptureSnapshot, finding: Incident
+) -> str:
+    """Bind notes to stored evidence, labels, and detector/run provenance, not an ID alone."""
+    references = set(finding.event_ids)
+    body = {
+        "rule_id": snapshot.rule_id,
+        "provenance": snapshot.provenance,
+        "capture": capture.summary.model_dump(mode="json"),
+        "metadata": capture.metadata,
+        "finding": finding.model_dump(mode="json"),
+        "evidence": [e.model_dump(mode="json") for e in capture.events if e.event_id in references],
+    }
+    return sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()

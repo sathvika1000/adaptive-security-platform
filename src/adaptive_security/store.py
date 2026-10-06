@@ -11,6 +11,12 @@ from adaptive_security.correlation.policy import WINDOW, identity
 from adaptive_security.domain.detections import DetectionSignal
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentStatus, IncidentTransition
+from adaptive_security.offline_annotations import (
+    ReviewConflict,
+    ReviewEdit,
+    ReviewEntry,
+    ReviewPage,
+)
 
 CONTEXT_EXISTS_SQL = """EXISTS (
     SELECT 1 FROM incidents AS ci, json_each(ci.body, '$.context_event_refs') AS ref
@@ -79,6 +85,12 @@ class SQLiteStore:
                 occurred_at TEXT NOT NULL, request_id TEXT,
                 event_source TEXT, event_id TEXT, merged_into TEXT,
                 actor TEXT
+            )"""
+        )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS offline_finding_reviews (
+                review_key TEXT NOT NULL, revision INTEGER NOT NULL, body TEXT NOT NULL,
+                PRIMARY KEY (review_key, revision)
             )"""
         )
         transition_columns = {
@@ -538,3 +550,32 @@ class SQLiteStore:
                 (limit, offset),
             ).fetchall()
         return [Incident.model_validate_json(row[0]) for row in rows]
+
+    def offline_reviews(self, review_key: str, limit: int, offset: int) -> ReviewPage:
+        with self.transaction() as conn:
+            revision = conn.execute(
+                "SELECT COALESCE(MAX(revision), 0) FROM offline_finding_reviews WHERE review_key=?",
+                (review_key,),
+            ).fetchone()[0]
+            entries = [ReviewEntry.model_validate_json(row[0]) for row in conn.execute(
+                "SELECT body FROM offline_finding_reviews WHERE review_key=? "
+                "ORDER BY revision DESC LIMIT ? OFFSET ?", (review_key, limit, offset),
+            )]
+        return ReviewPage(review_key=review_key, revision=revision, entries=entries)
+
+    def append_offline_review(self, review_key: str, edit: ReviewEdit, actor: str | None,
+                              request_id: str) -> ReviewEntry:
+        with self.transaction() as conn:
+            revision = conn.execute(
+                "SELECT COALESCE(MAX(revision), 0) FROM offline_finding_reviews WHERE review_key=?",
+                (review_key,),
+            ).fetchone()[0]
+            if revision != edit.expected_revision:
+                raise ReviewConflict
+            entry = ReviewEntry(
+                revision=revision + 1, disposition=edit.disposition, note=edit.note,
+                actor=actor, occurred_at=datetime.now(UTC), request_id=request_id,
+            )
+            conn.execute("INSERT INTO offline_finding_reviews VALUES (?, ?, ?)",
+                         (review_key, entry.revision, entry.model_dump_json()))
+        return entry

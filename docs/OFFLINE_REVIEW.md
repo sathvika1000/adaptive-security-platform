@@ -45,7 +45,8 @@ free port and update the URL.
 ## Evidence and limits
 
 The offline view reads stored results and never imports events/findings into the incident
-database or provides analyst closure actions. It displays declared labels and partitions,
+database or provides analyst closure actions. Analyst assessments are stored separately in the configured
+SQLite database; they do not alter captured files, detector findings, labels, or metrics. It displays declared labels and partitions,
 computed case verdicts, source checksums, and available review/implementation provenance.
 A capture-level malicious label does not label all background records. No findings does
 not establish benign activity. Unsupported event families are identified explicitly.
@@ -75,3 +76,42 @@ the viewer does not rerun or tune a detector.
 Loading is bounded to 20 captures, 10,000 normalized records per capture, 1 MB metadata
 files, 5 MB original EVTX/findings files, 40 MB normalized/case files, and a 128 MB total
 read budget. Bundles above those bounds must be split into smaller complete runs.
+
+## Save analyst assessments
+
+Select a candidate finding, choose a disposition under **Analyst assessment**, and write
+a supporting note (1–2,000 characters). Click **Save assessment**. The current disposition
+and paginated history update together. Every save creates another revision; there is no
+edit/delete endpoint. Dispositions are `needs_review`, `suspicious`, `benign_activity`,
+`confirmed_malicious`, and `inconclusive`. They express analyst judgments, not evaluation
+labels or proof of compromise.
+
+With the default shared platform key, reviews are explicitly unattributed. If named analyst
+keys are configured, supply an analyst key with the new `review` permission. For example:
+
+```json
+{
+  "sathvika": {"key": "YOUR_DISTINCT_AT_LEAST_32_CHARACTER_KEY", "permissions": ["review"]}
+}
+```
+
+Use this JSON as `ASP_ANALYST_KEYS_JSON` before starting the server. A key may have both
+`close` and `review`; existing string entries and close-only keys retain close permission
+only. Server configuration determines the actor, never a user-supplied name. The UI clears
+the analyst key after submission and clears draft notes/history when changing findings or
+forgetting the platform key. Keys are never included in saved review entries.
+
+Review history is bound to a SHA-256 fingerprint of the capture metadata/label, run and
+rule provenance, finding, and its full stored evidence. Changed output starts a separate
+review history even if capture and finding IDs match. Notes persist across server restarts
+and standard SQLite backups. Keep `ASP_DB_PATH` consistent when restarting to retain them.
+Capture files are still a cached read-only snapshot; restart to open changed output.
+
+`GET /v1/offline-review/captures/{capture_id}/findings/{finding_id}/reviews` returns
+`review_key`, latest `revision`, and newest-first `entries`, with `limit` (1–100) and
+`offset` pagination. `POST` to the same URL appends a review using `review_key`,
+`expected_revision`, `disposition`, and `note`. Both require the platform key; named mode
+also requires an analyst key with review permission for POST. The server supplies actor,
+UTC timestamp, revision, and request ID. A stale revision or fingerprint returns HTTP 409;
+the UI reloads history and retains your note for reconsideration. A failed save does not
+modify history. Reviews stay separate from live incident lifecycle and evaluation scores.

@@ -20,7 +20,18 @@ from adaptive_security.connectors.wazuh import WazuhAlert, WazuhConnector
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentTransition
 from adaptive_security.http import AlertBodyLimit
-from adaptive_security.offline_review import CaptureSnapshot, ReviewSnapshot, ReviewSource
+from adaptive_security.offline_annotations import (
+    ReviewConflict,
+    ReviewEdit,
+    ReviewEntry,
+    ReviewPage,
+)
+from adaptive_security.offline_review import (
+    CaptureSnapshot,
+    ReviewSnapshot,
+    ReviewSource,
+    finding_review_key,
+)
 from adaptive_security.service import IngestionService
 from adaptive_security.store import RetentionPreview, SQLiteStore
 
@@ -57,9 +68,10 @@ def _analyst_digests(
             token = entry["key"]
             raw_permissions = entry["permissions"]
             if (not isinstance(raw_permissions, list) or
-                any(permission != "close" for permission in raw_permissions) or
+                any(permission not in ("close", "review") for permission in raw_permissions) or
                 len(raw_permissions) != len(set(raw_permissions))):
-                raise ValueError("analyst permissions must be a unique list containing only close")
+                raise ValueError("analyst permissions must be a unique list "
+                                 "containing only close or review")
             permissions = frozenset(raw_permissions)
         else:
             token = entry
@@ -164,7 +176,7 @@ def create_app(
     def analyst_identity(
         actor: Annotated[str | None, Depends(authorize_analyst)],
     ) -> AnalystIdentity:
-        permissions = (["close"] if actor is None else
+        permissions = (["close", "review"] if actor is None else
                        sorted(next(rights for name, _, rights in analyst_digests if name == actor)))
         return AnalystIdentity(
             mode="analyst" if analyst_digests else "shared",
@@ -228,6 +240,42 @@ def create_app(
             references = set(finding.event_ids)
             events = tuple(e for e in events if e.event_id in references)
         return list(events[offset:offset + limit])
+
+    def offline_finding_key(capture_id: str, finding_id: str) -> str:
+        snapshot = review_snapshot()
+        capture = review_capture(capture_id)
+        finding = next((i for i in capture.findings if i.incident_id == finding_id), None)
+        if finding is None or snapshot is None:
+            raise HTTPException(status_code=404, detail="Offline finding not found")
+        return finding_review_key(snapshot, capture, finding)
+
+    @app.get("/v1/offline-review/captures/{capture_id}/findings/{finding_id}/reviews",
+             response_model=ReviewPage, dependencies=[Depends(authorize)])
+    def offline_reviews(
+        capture_id: str, finding_id: str,
+        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> ReviewPage:
+        return store.offline_reviews(offline_finding_key(capture_id, finding_id), limit, offset)
+
+    @app.post("/v1/offline-review/captures/{capture_id}/findings/{finding_id}/reviews",
+              response_model=ReviewEntry, status_code=201, dependencies=[Depends(authorize)])
+    def save_offline_review(
+        capture_id: str, finding_id: str, edit: ReviewEdit, request: Request,
+        actor: Annotated[str | None, Depends(authorize_analyst)],
+    ) -> ReviewEntry:
+        if actor is not None and "review" not in next(
+            rights for name, _, rights in analyst_digests if name == actor
+        ):
+            raise HTTPException(status_code=403, detail="Review permission required")
+        review_key = offline_finding_key(capture_id, finding_id)
+        if edit.review_key != review_key:
+            raise HTTPException(status_code=409, detail="Finding changed; reload before saving")
+        try:
+            return store.append_offline_review(review_key, edit, actor, request.state.request_id)
+        except ReviewConflict:
+            raise HTTPException(status_code=409,
+                                detail="Review changed; reload before saving") from None
 
     @app.post("/v1/events/wazuh", response_model=IngestionResult, dependencies=[Depends(authorize)])
     def ingest_wazuh_event(payload: WazuhAlert) -> IngestionResult:
