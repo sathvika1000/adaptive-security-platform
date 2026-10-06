@@ -17,7 +17,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from adaptive_security.connectors.evtx import normalize
 from adaptive_security.connectors.windows_auth import extend_auth
-from adaptive_security.detection.windows_auth import RULES, AuthRule, detect_windows_auth
+from adaptive_security.detection.windows_auth import (
+    RULES,
+    AuthRule,
+    auth_telemetry_coverage,
+    detect_windows_auth,
+)
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.evaluation import EvaluationCase
 from adaptive_security.evaluation_suite import Dataset, Suite, evaluate_suite
@@ -148,6 +153,10 @@ def run(reservation_path: Path, destination: Path, capture_directory: Path | Non
                               "mapped_records": sum(e.action is not None for e in events),
                               "logon_failure_records": sum(e.action == "logon" and
                                                            e.outcome == "failure" for e in events)})
+            if development_rule is not None:
+                inventory[-1]["telemetry_coverage"] = auth_telemetry_coverage(
+                    events, development_rule
+                )
         suite = Suite(version=1, rule_id=development_rule or reservation.rule_id,
                       datasets=tuple(datasets))
         suite_path = output / "evaluation-suite.json"

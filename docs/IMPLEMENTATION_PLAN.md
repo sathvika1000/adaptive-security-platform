@@ -202,3 +202,10 @@ export authentication and revision checks. Summary, saved assessments, evidence 
 provenance and complete selected JSON/XML remain distinct; print output explicitly omits
 digital raw-data sections. Escaped notes, full evidence preservation, bounded overview and
 real Chromium download/mobile/print behavior are covered.
+
+Windows authentication validation now reports eligible telemetry using the detector's
+shared grouping/record checks, disjoint exclusion counts and per-capture coverage status.
+A missing-telemetry quiet result remains separate from usable inputs below threshold.
+Both local validation and public development evaluation include this diagnostic; labels,
+metrics, five-account thresholds and live enablement remain unchanged. Fresh attack and
+representative benign exports are still required.
