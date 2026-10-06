@@ -196,3 +196,9 @@ Offline assessment queue implemented: current-fingerprint latest dispositions, p
 pagination, capture/disposition filters, global/per-capture workload counts, exact-finding
 navigation and automatic refresh after saves. Latest revisions are read consistently in
 SQLite; old/different-context journals are excluded. Browser coverage checks the queue flow.
+
+Readable investigation reports now download as self-contained HTML using the existing
+export authentication and revision checks. Summary, saved assessments, evidence overview,
+provenance and complete selected JSON/XML remain distinct; print output explicitly omits
+digital raw-data sections. Escaped notes, full evidence preservation, bounded overview and
+real Chromium download/mobile/print behavior are covered.

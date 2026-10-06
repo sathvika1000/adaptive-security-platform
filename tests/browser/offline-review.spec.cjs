@@ -157,3 +157,37 @@ test('assessment queue filters, opens the exact finding, and refreshes progress 
   expect(await page.locator('#offline-queue-list').textContent()).toBe('');
   await expect(page.locator('#offline-queue-panel')).toBeHidden();
 });
+
+test('readable report downloads, renders safely and supports printing', async ({page, context}, testInfo) => {
+  await openCapture(page);
+  await page.locator('#offline-note').fill('<script>window.injected=true</script> Human review note');
+  await page.locator('#offline-save-review').click();
+  await expect(page.locator('#offline-note')).toHaveValue('');
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#offline-export-report').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^sample-[a-f0-9]{12}-review.html$/);
+  const saved = testInfo.outputPath('review-report.html');
+  await download.saveAs(saved);
+  const report = await context.newPage();
+  const outbound = []; report.on('request', req => {if(/^https?:/.test(req.url()))outbound.push(req.url());});
+  await report.goto(`file://${saved}`);
+  await expect(report.getByRole('heading', {name: 'Finding summary'})).toBeVisible();
+  await expect(report.getByRole('heading', {name: 'Saved assessments'})).toBeVisible();
+  await expect(report.locator('.note').first()).toContainText('<script>window.injected=true</script>');
+  expect(await report.evaluate(() => window.injected)).toBeUndefined();
+  await report.locator('#complete-export').evaluate(node => node.parentElement.open = true);
+  const artifact = JSON.parse(await report.locator('#complete-export').textContent());
+  expect(artifact.binding.evidence).toHaveLength(25);
+  expect(artifact.assessment_history.entries[0].note).toContain('<script>');
+  await report.locator('#complete-export').evaluate(node => node.parentElement.open = false);
+  await report.screenshot({path: testInfo.outputPath('readable-report-desktop.png'), fullPage: true});
+  await report.setViewportSize({width:390,height:844});
+  expect(await report.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await report.screenshot({path: testInfo.outputPath('readable-report-narrow.png'), fullPage: true});
+  await report.emulateMedia({media:'print'});
+  await expect(report.locator('#complete-export')).toBeHidden();
+  await expect(report.locator('.note').first()).toBeVisible();
+  await report.pdf({path:testInfo.outputPath('review-print-check.pdf'),format:'A4',printBackground:true});
+  expect(outbound).toEqual([]);
+});

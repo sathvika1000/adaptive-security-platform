@@ -628,3 +628,64 @@ def test_latest_review_batch_is_scoped_and_crosses_sql_chunk_boundary(tmp_path):
     assert len(result) == 401 and "f" * 64 not in result
     assert result[keys[-1]].revision == 2
     assert store.latest_offline_reviews([]) == {}
+
+
+def test_readable_report_contains_complete_export_and_escaped_notes(tmp_path, monkeypatch):
+    import re
+    from html import unescape
+
+    output = bundle(tmp_path, monkeypatch)
+    client = TestClient(create_app(str(tmp_path / "live.db"), KEY, {}, str(output)))
+    url, state = export_endpoint(client)
+    note = "<script>window.injected=true</script><img src=https://example.test/private>"
+    client.post(
+        url.replace("/export", "/reviews"),
+        headers=HEADERS,
+        json=dict(
+            review_key=state["review_key"], expected_revision=0, disposition="suspicious", note=note
+        ),
+    )
+    params = dict(review_key=state["review_key"], expected_revision=1, format="html")
+    assert client.get(url, params=params).status_code == 401
+    response = client.get(url, params=params, headers=HEADERS)
+    assert response.status_code == 200 and response.headers["content-type"].startswith("text/html")
+    assert response.headers["content-disposition"].endswith('-review.html"')
+    assert "default-src 'none'" in response.headers["content-security-policy"]
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-review-history-truncated"] == "false"
+    html = response.text
+    assert "<script>" not in html and "<img " not in html
+    assert "&lt;script&gt;window.injected=true" in html
+    assert "First 25 of 25 selected" in html
+    raw = re.search(r'<pre id="complete-export">(.*?)</pre>', html, flags=re.S).group(1)
+    artifact = json.loads(unescape(raw))
+    assert artifact["assessment_history"]["entries"][0]["note"] == note
+    assert len(artifact["binding"]["evidence"]) == 25
+    expected = artifact.pop("payload_sha256")
+    assert (
+        sha256(json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        == expected
+    )
+    assert artifact["binding"]["evidence"][0]["attributes"]["raw_xml"] == "<private-record />"
+    assert (
+        client.get(url, params={**params, "expected_revision": 0}, headers=HEADERS).status_code
+        == 409
+    )
+    assert client.get(url, params={**params, "format": "pdf"}, headers=HEADERS).status_code == 422
+
+
+def test_report_overview_caps_rows_without_losing_embedded_evidence(tmp_path, monkeypatch):
+    output = bundle(tmp_path, monkeypatch, number=105)
+    client = TestClient(create_app(str(tmp_path / "live.db"), KEY, {}, str(output)))
+    url, state = export_endpoint(client)
+    response = client.get(
+        url,
+        headers=HEADERS,
+        params=dict(review_key=state["review_key"], expected_revision=0, format="html"),
+    )
+    assert response.status_code == 200
+    assert "First 100 of 105 selected" in response.text
+    assert "No saved assessments" in response.text
+    assert "sample-event" not in response.text
+    assert response.text.count("<tr><td>") == 100
+    assert "event-104" in response.text
