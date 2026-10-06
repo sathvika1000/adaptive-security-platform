@@ -28,6 +28,7 @@ from adaptive_security.offline_annotations import (
     ReviewPage,
 )
 from adaptive_security.offline_queue import QueuePage, build_queue
+from adaptive_security.offline_report import REPORT_CSP, readable_report
 from adaptive_security.offline_review import (
     CaptureSnapshot,
     ReviewSnapshot,
@@ -300,6 +301,7 @@ def create_app(
         capture_id: str, finding_id: str,
         review_key: Annotated[str, Query(pattern=r"^[0-9a-f]{64}$")],
         expected_revision: Annotated[int, Query(ge=0)],
+        format: Literal["json", "html"] = "json",
     ) -> Response:
         key = offline_finding_key(capture_id, finding_id)
         history = store.offline_reviews(key, 100, 0)
@@ -338,9 +340,14 @@ def create_app(
         }
         canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         artifact = {**payload, "payload_sha256": hashlib.sha256(canonical).hexdigest()}
-        return Response(json.dumps(artifact, indent=2), media_type="application/json", headers={
-            "Content-Disposition": f'attachment; filename="{capture_id}-{key[:12]}-review.json"',
+        html = format == "html"
+        return Response(readable_report(artifact) if html else json.dumps(artifact, indent=2),
+                        media_type="text/html" if html else "application/json", headers={
+            "Content-Disposition": (
+                f'attachment; filename="{capture_id}-{key[:12]}-review.{format}"'),
             "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+            "X-Review-History-Truncated": str(history.revision > len(history.entries)).lower(),
+            "Content-Security-Policy": REPORT_CSP if html else "default-src 'none'",
         })
 
     @app.post("/v1/events/wazuh", response_model=IngestionResult, dependencies=[Depends(authorize)])

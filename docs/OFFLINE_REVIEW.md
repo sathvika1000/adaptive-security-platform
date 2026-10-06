@@ -135,7 +135,8 @@ key, like viewing evidence/history. No platform or analyst credentials are added
 `GET /v1/offline-review/captures/{capture_id}/findings/{finding_id}/export` requires the
 platform key plus query parameters `review_key` and `expected_revision`. A changed finding
 or review returns HTTP 409. The UI refreshes history and asks you to export again, preserving
-your draft. Successful responses are JSON attachments with no-store caching. Filenames
+your draft. The optional `format` query accepts `json` (default) or `html`. Successful
+responses are attachments with no-store caching. Filenames
 use the validated capture ID and a fingerprint prefix rather than untrusted finding titles.
 
 The format is `asp.offline-finding-review`, version 1. `binding` contains the exact context
@@ -166,12 +167,31 @@ print("Content hashes match (author identity and labels are not verified)")
 PY
 ```
 
+## Readable investigation report
+
+Click **Download readable report** beside the JSON export button. Open the downloaded
+HTML file in your browser. On a Mac, press **Command-P** and choose **Save as PDF** to
+keep a printable copy. No Windows system or additional software is needed.
+
+The self-contained report shows the finding, capture labels and partition, current saved
+assessment, latest 100 saved revisions, hashes, and the first 100 selected evidence records
+in an overview table. Expand **Complete export** to read the complete JSON with all selected
+evidence and preserved raw XML. The printable copy contains the summary, saved assessments,
+overview, and scope limits; complete JSON and detailed provenance stay in the digital HTML
+file. Keep the HTML or JSON export when you need complete evidence. History truncation and
+excluded capture records remain explicit.
+
+The HTML download uses the same authentication, fingerprint, and revision checks as JSON.
+It contains no scripts or remote assets. Notes and raw evidence are escaped literal text.
+The UI downloads the report without inserting its contents into the platform page.
+
 ## Browser regression checks
 
 CI now includes a `browser-review` job using real Chromium and disposable synthetic
 review bundles. It checks the UI against the real API: incorrect keys, evidence pagination
 and XML expansion, saved assessments, literal note rendering, conflicting saves/exports,
-JSON downloads and both hashes, reload persistence, named analyst attribution, forgotten
+JSON downloads and both hashes, readable HTML downloads and print rendering, reload
+persistence, named analyst attribution, forgotten
 key cleanup, and narrow-screen overflow. Desktop and narrow screenshots plus the HTML
 report are retained in the `browser-review-report` Actions artifact for seven days. Failure
 traces are retained too. These fixtures do not establish captured detection accuracy.
