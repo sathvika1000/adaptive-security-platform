@@ -115,3 +115,53 @@ also requires an analyst key with review permission for POST. The server supplie
 UTC timestamp, revision, and request ID. A stale revision or fingerprint returns HTTP 409;
 the UI reloads history and retains your note for reconsideration. A failed save does not
 modify history. Reviews stay separate from live incident lifecycle and evaluation scores.
+
+## Export a finding review
+
+Select a finding and click **Export finding review** to download a JSON file containing
+its full stored evidence (including XML), capture metadata, declared labels/partitions,
+rule/run provenance, and the latest 100 **saved** assessment revisions. Unsaved drafts
+are omitted. Exports are available before an assessment is saved too, with empty history.
+The original EVTX binary and other capture records are omitted; its checksum is retained.
+If more than 100 revisions exist, `history_truncated` is true and both the file and UI
+identify the omission. Full older history remains available through review pagination.
+
+The file may contain private details from source records. Nothing is uploaded or sent
+automatically; the button downloads through an authenticated same-origin request. The
+export does not modify captured files, assessments, live incidents, or metrics. Named
+review permission is required to save assessments, but exporting uses the platform read
+key, like viewing evidence/history. No platform or analyst credentials are added to exports.
+
+`GET /v1/offline-review/captures/{capture_id}/findings/{finding_id}/export` requires the
+platform key plus query parameters `review_key` and `expected_revision`. A changed finding
+or review returns HTTP 409. The UI refreshes history and asks you to export again, preserving
+your draft. Successful responses are JSON attachments with no-store caching. Filenames
+use the validated capture ID and a fingerprint prefix rather than untrusted finding titles.
+
+The format is `asp.offline-finding-review`, version 1. `binding` contains the exact context
+used to calculate `review_key`; `assessment_history` contains newest-first revisions and
+explicit inclusion counts; `scope` describes omissions and interpretation limits.
+`payload_sha256` hashes every other top-level field using Python-compatible JSON
+serialization (`sort_keys=True`, `separators=(",", ":")`, default ASCII escaping, UTF-8).
+The same serialization of `binding` must match `review_key`. These checks detect content
+changes; they are not signatures or independent proof of author identity or labels.
+
+To check both hashes, replace the path below with the downloaded JSON filename:
+
+```bash
+python - /path/to/downloaded-review.json <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+artifact = json.loads(Path(sys.argv[1]).read_text())
+expected = artifact.pop("payload_sha256")
+def digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True,
+        separators=(",", ":")).encode()).hexdigest()
+if digest(artifact) != expected or digest(artifact["binding"]) != artifact["review_key"]:
+    raise SystemExit("Content check failed")
+print("Content hashes match (author identity and labels are not verified)")
+PY
+```

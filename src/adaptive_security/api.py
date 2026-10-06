@@ -30,6 +30,7 @@ from adaptive_security.offline_review import (
     CaptureSnapshot,
     ReviewSnapshot,
     ReviewSource,
+    finding_review_binding,
     finding_review_key,
 )
 from adaptive_security.service import IngestionService
@@ -276,6 +277,55 @@ def create_app(
         except ReviewConflict:
             raise HTTPException(status_code=409,
                                 detail="Review changed; reload before saving") from None
+
+    @app.get("/v1/offline-review/captures/{capture_id}/findings/{finding_id}/export",
+             dependencies=[Depends(authorize)])
+    def export_offline_finding(
+        capture_id: str, finding_id: str,
+        review_key: Annotated[str, Query(pattern=r"^[0-9a-f]{64}$")],
+        expected_revision: Annotated[int, Query(ge=0)],
+    ) -> Response:
+        key = offline_finding_key(capture_id, finding_id)
+        history = store.offline_reviews(key, 100, 0)
+        if key != review_key or history.revision != expected_revision:
+            raise HTTPException(status_code=409,
+                                detail="Finding or review changed; reload to export")
+        snapshot = review_snapshot()
+        capture = review_capture(capture_id)
+        assert snapshot is not None
+        finding = next(i for i in capture.findings if i.incident_id == finding_id)
+        payload = {
+            "format": "asp.offline-finding-review", "format_version": 1,
+            "exported_at": datetime.now(UTC).isoformat(),
+            "review_key": key,
+            "binding": finding_review_binding(snapshot, capture, finding),
+            "assessment_history": {
+                "latest_revision": history.revision,
+                "included_revisions": len(history.entries),
+                "history_truncated": history.revision > len(history.entries),
+                "entries": [entry.model_dump(mode="json") for entry in history.entries],
+            },
+            "scope": {
+                "evidence_records": len(finding.event_ids),
+                "capture_records": capture.summary.records,
+                "original_evtx_included": False,
+                "limitations": [
+                    "Selected finding evidence only; other capture records are omitted.",
+                    "Original EVTX binary is referenced by checksum, not embedded.",
+                    "Latest 100 assessment revisions only; history_truncated indicates omissions.",
+                    "Labels, provenance and analyst judgments are declarations, "
+                    "not independent proof.",
+                    "This export does not establish held-out accuracy or enable live detection.",
+                    "SHA-256 checks detect content changes; they do not authenticate an author.",
+                ],
+            },
+        }
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        artifact = {**payload, "payload_sha256": hashlib.sha256(canonical).hexdigest()}
+        return Response(json.dumps(artifact, indent=2), media_type="application/json", headers={
+            "Content-Disposition": f'attachment; filename="{capture_id}-{key[:12]}-review.json"',
+            "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+        })
 
     @app.post("/v1/events/wazuh", response_model=IngestionResult, dependencies=[Depends(authorize)])
     def ingest_wazuh_event(payload: WazuhAlert) -> IngestionResult:

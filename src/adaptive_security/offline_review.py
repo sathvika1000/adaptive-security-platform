@@ -259,12 +259,12 @@ class ReviewSource:
             return self._snapshot
 
 
-def finding_review_key(
+def finding_review_binding(
     snapshot: ReviewSnapshot, capture: CaptureSnapshot, finding: Incident
-) -> str:
-    """Bind notes to stored evidence, labels, and detector/run provenance, not an ID alone."""
+) -> dict[str, Any]:
+    """Canonical evidence context used by both the review journal and portable exports."""
     references = set(finding.event_ids)
-    body = {
+    return {
         "rule_id": snapshot.rule_id,
         "provenance": snapshot.provenance,
         "capture": capture.summary.model_dump(mode="json"),
@@ -272,4 +272,11 @@ def finding_review_key(
         "finding": finding.model_dump(mode="json"),
         "evidence": [e.model_dump(mode="json") for e in capture.events if e.event_id in references],
     }
+
+
+def finding_review_key(
+    snapshot: ReviewSnapshot, capture: CaptureSnapshot, finding: Incident
+) -> str:
+    """Bind notes to stored evidence, labels, and detector/run provenance, not an ID alone."""
+    body = finding_review_binding(snapshot, capture, finding)
     return sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
