@@ -493,3 +493,138 @@ def test_export_omits_other_records_and_flags_truncated_history(tmp_path, monkey
         ).status_code
         == 404
     )
+
+
+def test_queue_latest_disposition_filters_and_progress(tmp_path, monkeypatch):
+    output = bundle(tmp_path, monkeypatch)
+    database = str(tmp_path / "live.db")
+    client = TestClient(create_app(database, KEY, {}, str(output)))
+    url = "/v1/offline-review/queue"
+    assert client.get(url).status_code == 401
+    initial = client.get(url, headers=HEADERS)
+    assert initial.headers["cache-control"] == "no-store"
+    page = initial.json()
+    assert (
+        page["counts"]["total"]
+        == page["counts"]["needs_review"]
+        == page["counts"]["unassessed"]
+        == 1
+    )
+    assert page["entries"][0]["disposition"] == "needs_review"
+    review_url = review_endpoint(client)
+    state = client.get(review_url, headers=HEADERS).json()
+    edit = dict(
+        review_key=state["review_key"],
+        expected_revision=0,
+        disposition="confirmed_malicious",
+        note="Supporting evidence note",
+    )
+    assert client.post(review_url, json=edit, headers=HEADERS).status_code == 201
+    page = client.get(url, headers=HEADERS).json()
+    assert page["counts"]["assessed"] == 1 and page["counts"]["needs_review"] == 0
+    assert page["counts"]["dispositions"]["confirmed_malicious"] == 1
+    assert page["capture_counts"]["sample"]["assessed"] == 1
+    assert page["entries"][0]["revision"] == 1 and page["entries"][0]["actor"] is None
+    assert "Supporting evidence note" not in str(page)
+    assert client.get(url + "?disposition=needs_review", headers=HEADERS).json()["matching"] == 0
+    assert (
+        client.get(url + "?disposition=confirmed_malicious", headers=HEADERS).json()["matching"]
+        == 1
+    )
+    # Reopening review changes workload but retains prior history.
+    client.post(
+        review_url,
+        json={**edit, "expected_revision": 1, "disposition": "needs_review"},
+        headers=HEADERS,
+    )
+    page = client.get(url, headers=HEADERS).json()
+    assert page["counts"]["assessed"] == 0 and page["counts"]["needs_review"] == 1
+    assert page["counts"]["unassessed"] == 0 and page["entries"][0]["revision"] == 2
+    assert client.get(url + "?capture_id=missing", headers=HEADERS).status_code == 404
+    for query in ["disposition=invalid", "limit=101", "offset=-1"]:
+        assert client.get(url + "?" + query, headers=HEADERS).status_code == 422
+    restarted = TestClient(create_app(database, KEY, {}, str(output)))
+    assert restarted.get(url, headers=HEADERS).json() == page
+    assert client.get("/v1/incidents", headers=HEADERS).json() == []
+
+
+def test_queue_cross_capture_pagination_and_changed_context(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from adaptive_security.offline_review import ReviewSource
+
+    output = bundle(tmp_path, monkeypatch)
+    original = load_review(output)
+    capture = original.captures["sample"]
+    findings = tuple(
+        capture.findings[0].model_copy(update={"incident_id": f"finding-{i:02}"}) for i in range(23)
+    )
+    first = replace(capture, findings=findings)
+    second = replace(
+        capture,
+        summary=capture.summary.model_copy(update={"capture_id": "other"}),
+        findings=findings[:1],
+    )
+    holder = {"snapshot": replace(original, captures={"sample": first, "other": second})}
+    monkeypatch.setattr(ReviewSource, "snapshot", lambda _self: holder["snapshot"])
+    client = TestClient(create_app(str(tmp_path / "live.db"), KEY, {}, str(output)))
+    url = "/v1/offline-review/queue"
+    page = client.get(url, headers=HEADERS).json()
+    assert page["counts"]["total"] == 24 and len(page["entries"]) == 20
+    rest = client.get(url + "?offset=20", headers=HEADERS).json()["entries"]
+    assert len(rest) == 4
+    identities = [(row["capture_id"], row["finding_id"]) for row in page["entries"] + rest]
+    assert len(set(identities)) == 24
+    review_url = "/v1/offline-review/captures/sample/findings/finding-00/reviews"
+    state = client.get(review_url, headers=HEADERS).json()
+    client.post(
+        review_url,
+        json=dict(
+            review_key=state["review_key"],
+            expected_revision=0,
+            disposition="suspicious",
+            note="Only the selected finding",
+        ),
+        headers=HEADERS,
+    )
+    selected = client.get(url + "?capture_id=sample&disposition=suspicious", headers=HEADERS).json()
+    assert selected["matching"] == 1 and selected["entries"][0]["finding_id"] == "finding-00"
+    assert selected["counts"]["total"] == 24  # Summary always covers the entire run.
+    other = client.get(url + "?capture_id=other", headers=HEADERS).json()
+    assert other["entries"][0]["revision"] == 0  # Same finding ID in another capture is separate.
+    holder["snapshot"] = replace(holder["snapshot"], provenance={"review_scope": "Changed context"})
+    changed = client.get(url, headers=HEADERS).json()
+    assert changed["counts"]["assessed"] == 0 and changed["counts"]["unassessed"] == 24
+
+
+def test_unconfigured_queue_has_zero_counts(tmp_path, monkeypatch):
+    monkeypatch.delenv("ASP_OFFLINE_REVIEW_PATH", raising=False)
+    client = TestClient(create_app(str(tmp_path / "live.db"), KEY, {}))
+    page = client.get("/v1/offline-review/queue", headers=HEADERS).json()
+    assert page["configured"] is False and page["entries"] == []
+    assert page["counts"]["total"] == page["matching"] == 0
+
+
+def test_latest_review_batch_is_scoped_and_crosses_sql_chunk_boundary(tmp_path):
+    from adaptive_security.offline_annotations import ReviewEdit
+    from adaptive_security.store import SQLiteStore
+
+    store = SQLiteStore(str(tmp_path / "live.db"))
+    keys = [f"{i:064x}" for i in range(401)]
+    for key in [*keys, "f" * 64]:
+        edit = ReviewEdit(
+            review_key=key, expected_revision=0, disposition="suspicious", note="Initial"
+        )
+        store.append_offline_review(key, edit, "analyst", "fixture")
+    store.append_offline_review(
+        keys[-1],
+        ReviewEdit(
+            review_key=keys[-1], expected_revision=1, disposition="inconclusive", note="Latest"
+        ),
+        "analyst",
+        "latest",
+    )
+    result = store.latest_offline_reviews(keys)
+    assert len(result) == 401 and "f" * 64 not in result
+    assert result[keys[-1]].revision == 2
+    assert store.latest_offline_reviews([]) == {}

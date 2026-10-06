@@ -19,6 +19,8 @@ let offlineEvidence = true;
 let reviewRevision = 0;
 let reviewState = null;
 let reviewOffset = 0;
+let queueRevision = 0;
+let queueOffset = 0;
 
 function element(tag, className, value) {
   const node = document.createElement(tag);
@@ -371,6 +373,14 @@ for (const [id, delta] of [["context-prev", -PAGE_SIZE], ["context-next", PAGE_S
 
 function resetOffline() {
   resetAssessment();
+  queueRevision += 1;
+  queueOffset = 0;
+  el("offline-queue-panel").hidden = true;
+  el("offline-queue-list").replaceChildren();
+  for (const id of ["offline-queue-progress", "offline-queue-scope", "offline-queue-page"]) el(id).textContent = "";
+  el("offline-queue-filter").value = "needs_review";
+  el("offline-queue-capture").replaceChildren(element("option", "", "All captures"));
+  el("offline-queue-capture").firstChild.value = "";
   offlineRevision += 1;
   offlineEventRevision += 1;
   offlineCapture = null;
@@ -410,6 +420,11 @@ async function offlineIndex() {
   el("offline-rule").textContent = `Stored rule: ${run.rule_id} · Live deployment disabled for these rules`;
   el("offline-provenance").textContent = JSON.stringify(run.provenance, null, 2);
   for (const capture of run.captures) {
+    const option = element("option", "", capture.capture_id);
+    option.value = capture.capture_id;
+    el("offline-queue-capture").append(option);
+  }
+  for (const capture of run.captures) {
     const button = element("button", "incident-card");
     button.type = "button";
     button.dataset.captureId = capture.capture_id;
@@ -420,10 +435,11 @@ async function offlineIndex() {
     button.addEventListener("click", () => selectOfflineCapture(capture.capture_id));
     el("offline-captures").append(button);
   }
+  await loadQueue(0);
   notice("");
 }
 
-async function selectOfflineCapture(identifier) {
+async function selectOfflineCapture(identifier, findingId = null) {
   const current = ++offlineRevision;
   const currentSession = session;
   offlineEventRevision += 1;
@@ -433,7 +449,7 @@ async function selectOfflineCapture(identifier) {
     const capture = await read(`/v1/offline-review/captures/${encodeURIComponent(identifier)}`);
     if (current !== offlineRevision || currentSession !== session || activeView !== "offline") return;
     offlineCapture = capture;
-    offlineFinding = capture.findings[0] || null;
+    offlineFinding = (findingId ? capture.findings.find(f => f.incident_id === findingId) : capture.findings[0]) || null;
     offlineEvidence = Boolean(offlineFinding);
     const summary = capture.summary;
     el("offline-empty").hidden = true;
@@ -607,7 +623,7 @@ el("offline-review-form").addEventListener("submit", async (event) => {
     });
     if (current !== reviewRevision || currentSession !== session || activeView !== "offline") return;
     if (response.status === 409) {
-      await loadAssessment(0);
+      await Promise.all([loadAssessment(0), loadQueue(0)]);
       notice("The review or finding changed. Your note is retained; check the latest assessment before saving again.", true);
       return;
     }
@@ -615,7 +631,7 @@ el("offline-review-form").addEventListener("submit", async (event) => {
       response.status === 403 ? "This analyst key needs review permission." :
       `Could not save assessment (HTTP ${response.status}).`);
     el("offline-note").value = "";
-    await loadAssessment(0);
+    await Promise.all([loadAssessment(0), loadQueue(0)]);
     if (currentSession === session && activeView === "offline" && reviewState?.path === state.path) notice("Assessment saved; capture labels and detector results are unchanged.");
   } catch (error) {
     if (current === reviewRevision && currentSession === session) showFailure(error);
@@ -643,7 +659,7 @@ el("offline-export-review").addEventListener("click", async () => {
     });
     if (current !== reviewRevision || currentSession !== session || activeView !== "offline") return;
     if (response.status === 409) {
-      await loadAssessment(0);
+      await Promise.all([loadAssessment(0), loadQueue(0)]);
       notice("The finding or assessment changed. Review the latest history, then export again.", true);
       return;
     }
@@ -667,3 +683,59 @@ el("offline-export-review").addEventListener("click", async () => {
     if (currentSession === session && reviewState?.path === state.path) el("offline-export-review").disabled = false;
   }
 });
+
+async function loadQueue(offset = 0) {
+  const current = ++queueRevision;
+  const currentSession = session;
+  const filter = el("offline-queue-filter").value;
+  const capture = el("offline-queue-capture").value;
+  const query = `?limit=${PAGE_SIZE}&offset=${offset}` +
+    (filter ? `&disposition=${encodeURIComponent(filter)}` : "") +
+    (capture ? `&capture_id=${encodeURIComponent(capture)}` : "");
+  const page = await read(`/v1/offline-review/queue${query}`);
+  if (current !== queueRevision || currentSession !== session || activeView !== "offline") return;
+  queueOffset = offset;
+  el("offline-queue-panel").hidden = !page.configured;
+  const counts = page.counts;
+  el("offline-queue-progress").textContent = counts.total ?
+    `${counts.assessed} of ${counts.total} findings assessed · ${counts.needs_review} need review · ${counts.unassessed} have no saved assessment` :
+    "No candidate findings in this configured run.";
+  el("offline-queue-scope").textContent = `${page.matching} findings match these filters. Counts above cover the entire run.`;
+  el("offline-queue-list").replaceChildren();
+  if (!page.entries.length) el("offline-queue-list").append(element("p", "empty-copy", "No findings match these filters."));
+  for (const item of page.entries) {
+    const button = element("button", "incident-card");
+    button.type = "button";
+    button.dataset.queueFindingId = item.finding_id;
+    button.append(element("div", "card-title", item.title));
+    button.append(element("div", "card-subtitle", `${item.capture_id} · ${item.evidence_records} evidence records`));
+    button.append(element("div", "card-foot", `${item.disposition.replaceAll("_", " ")} · ` +
+      (item.revision ? `Revision ${item.revision} · ${item.actor || "Shared key (unattributed)"}` : "No saved assessment")));
+    button.addEventListener("click", async () => {
+      await selectOfflineCapture(item.capture_id, item.finding_id);
+    });
+    el("offline-queue-list").append(button);
+  }
+  for (const button of el("offline-captures").querySelectorAll("button")) {
+    const progress = page.capture_counts[button.dataset.captureId];
+    const foot = button.querySelector(".queue-capture-progress") || element("div", "queue-capture-progress card-foot");
+    foot.textContent = progress.total ? `${progress.assessed}/${progress.total} assessed · ${progress.needs_review} need review` : "No candidate findings";
+    if (!foot.parentNode) button.append(foot);
+  }
+  el("offline-queue-page").textContent = `Page ${Math.floor(offset / PAGE_SIZE) + 1}`;
+  el("offline-queue-prev").disabled = offset === 0;
+  el("offline-queue-next").disabled = offset + page.entries.length >= page.matching;
+}
+for (const id of ["offline-queue-filter", "offline-queue-capture"]) {
+  el(id).addEventListener("change", async () => {
+    try { await loadQueue(0); } catch (error) { showFailure(error); }
+  });
+}
+el("offline-queue-refresh").addEventListener("click", async () => {
+  try { await loadQueue(0); } catch (error) { showFailure(error); }
+});
+for (const [id, delta] of [["offline-queue-prev", -PAGE_SIZE], ["offline-queue-next", PAGE_SIZE]]) {
+  el(id).addEventListener("click", async () => {
+    try { await loadQueue(queueOffset + delta); } catch (error) { showFailure(error); }
+  });
+}

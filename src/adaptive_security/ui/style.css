@@ -87,3 +87,10 @@ select, textarea { font: inherit; border: 1px solid #b9cbd0; border-radius: 9px;
 #offline-review-form .hint { margin: 0; }
 #offline-review-form button { justify-self: start; }
 .review-note { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.queue-panel { min-height: 0; margin-bottom: 22px; }
+.queue-panel h2 { margin-top: 0; }
+.queue-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; margin-top: 20px; }
+.queue-controls > div { min-width: 0; flex: 1; }
+.queue-controls select { width: 100%; }
+.queue-list { grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); }

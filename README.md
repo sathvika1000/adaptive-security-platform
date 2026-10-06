@@ -434,3 +434,7 @@ from detector verdicts and capture labels; see the [review guide](docs/OFFLINE_R
 Use **Export finding review** to download a finding’s evidence, provenance, and latest
 100 saved assessment revisions as JSON, with fingerprints and explicit scope limits.
 The [review guide](docs/OFFLINE_REVIEW.md) describes the export format and content checks.
+
+An assessment queue now lists findings across the offline run, with disposition/capture
+filters, pending-first pagination, and review progress counts. Saving assessments refreshes
+the queue; workload counts remain separate from detection accuracy.

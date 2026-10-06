@@ -21,11 +21,13 @@ from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentTransition
 from adaptive_security.http import AlertBodyLimit
 from adaptive_security.offline_annotations import (
+    Disposition,
     ReviewConflict,
     ReviewEdit,
     ReviewEntry,
     ReviewPage,
 )
+from adaptive_security.offline_queue import QueuePage, build_queue
 from adaptive_security.offline_review import (
     CaptureSnapshot,
     ReviewSnapshot,
@@ -218,6 +220,20 @@ def create_app(
         return {"configured": True, "rule_id": snapshot.rule_id,
                 "provenance": snapshot.provenance,
                 "captures": [c.summary.model_dump() for c in snapshot.captures.values()]}
+
+    @app.get("/v1/offline-review/queue", response_model=QueuePage,
+             dependencies=[Depends(authorize)])
+    def offline_queue(
+        disposition: Disposition | None = None, capture_id: str | None = None,
+        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> QueuePage:
+        snapshot = review_snapshot()
+        if snapshot is not None and capture_id is not None and capture_id not in snapshot.captures:
+            raise HTTPException(status_code=404, detail="Offline capture not found")
+        latest = (store.latest_offline_reviews(list(snapshot.finding_keys.values()))
+                  if snapshot is not None else {})
+        return build_queue(snapshot, latest, disposition, capture_id, limit, offset)
 
     @app.get("/v1/offline-review/captures/{capture_id}", dependencies=[Depends(authorize)])
     def offline_capture(capture_id: str) -> dict[str, object]:
