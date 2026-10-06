@@ -36,7 +36,7 @@
     </nav>
     <section id="offline-workspace" hidden>
       <div class="offline-banner">
-        <p class="kicker">Offline evidence review · Read-only</p>
+        <p class="kicker">Offline evidence review</p>
         <h2>Captured Windows activity</h2>
         <p>These are stored evaluation results. Capture labels and partitions are declarations;
           findings do not establish production accuracy or enable live detection.</p>
@@ -81,6 +81,9 @@
                 <p class="hint">Named analyst keys must have review permission. The key is cleared after submission.</p>
                 <button id="offline-save-review" type="submit" class="primary" disabled>Save assessment</button>
               </form>
+              <button id="offline-export-review" type="button" class="secondary" disabled>Export finding review</button>
+              <p class="hint">JSON includes this finding’s evidence and latest 100 saved assessment revisions.
+                Raw records may contain account names and other private details.</p>
               <h3 class="history-head">Assessment history</h3>
               <div id="offline-review-history" class="history-list"></div>
               <div class="pager">

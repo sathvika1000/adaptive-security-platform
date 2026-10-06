@@ -430,3 +430,7 @@ for this view; representative benign validation remains pending.
 Offline findings also support persistent analyst dispositions and supporting notes, with
 revision history, named review permission, and conflict protection. Assessments stay separate
 from detector verdicts and capture labels; see the [review guide](docs/OFFLINE_REVIEW.md).
+
+Use **Export finding review** to download a finding’s evidence, provenance, and latest
+100 saved assessment revisions as JSON, with fingerprints and explicit scope limits.
+The [review guide](docs/OFFLINE_REVIEW.md) describes the export format and content checks.

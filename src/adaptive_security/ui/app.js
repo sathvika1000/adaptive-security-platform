@@ -545,6 +545,7 @@ function resetAssessment() {
   el("offline-review-current").textContent = "";
   el("offline-review-page").textContent = "";
   el("offline-save-review").disabled = true;
+  el("offline-export-review").disabled = true;
 }
 
 function assessmentPath() {
@@ -558,12 +559,14 @@ async function loadAssessment(offset = 0) {
   const currentSession = session;
   const path = assessmentPath();
   el("offline-save-review").disabled = true;
+  el("offline-export-review").disabled = true;
   const page = await read(`${path}?limit=${PAGE_SIZE}&offset=${offset}`);
   if (current !== reviewRevision || currentCapture !== offlineRevision || currentSession !== session || activeView !== "offline") return;
   reviewState = {path, revision: page.revision, review_key: page.review_key};
   reviewOffset = offset;
   el("offline-review-panel").hidden = false;
   el("offline-save-review").disabled = false;
+  el("offline-export-review").disabled = false;
   if (offset === 0) {
     const latest = page.entries[0];
     el("offline-review-current").textContent = latest ?
@@ -625,3 +628,42 @@ for (const [id, delta] of [["offline-review-prev", -PAGE_SIZE], ["offline-review
     try { await loadAssessment(reviewOffset + delta); } catch (error) { showFailure(error); }
   });
 }
+
+el("offline-export-review").addEventListener("click", async () => {
+  if (!reviewState || activeView !== "offline") return;
+  const state = reviewState;
+  const current = reviewRevision;
+  const currentSession = session;
+  const captureId = offlineCapture.summary.capture_id;
+  el("offline-export-review").disabled = true;
+  try {
+    const path = state.path.replace(/\/reviews$/, "/export");
+    const response = await fetch(`${path}?review_key=${encodeURIComponent(state.review_key)}&expected_revision=${state.revision}`, {
+      headers: {"X-API-Key": apiKey}, cache: "no-store", redirect: "error",
+    });
+    if (current !== reviewRevision || currentSession !== session || activeView !== "offline") return;
+    if (response.status === 409) {
+      await loadAssessment(0);
+      notice("The finding or assessment changed. Review the latest history, then export again.", true);
+      return;
+    }
+    if (!response.ok) throw new Error(`Could not export review (HTTP ${response.status}).`);
+    const artifact = await response.json();
+    if (current !== reviewRevision || currentSession !== session || activeView !== "offline") return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(artifact, null, 2)], {type: "application/json"}));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${captureId}-${state.review_key.slice(0, 12)}-review.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    notice(artifact.assessment_history.history_truncated ?
+      "Export downloaded with the latest 100 revisions; older history is omitted." :
+      "Finding review exported with evidence and assessment history.");
+  } catch (error) {
+    if (current === reviewRevision && currentSession === session) showFailure(error);
+  } finally {
+    if (currentSession === session && reviewState?.path === state.path) el("offline-export-review").disabled = false;
+  }
+});

@@ -180,3 +180,8 @@ Offline analyst assessment now appends disposition/note revisions in SQLite, bou
 capture metadata, run provenance, finding, and evidence. Named review permission, request
 attribution, pagination, restart/backup persistence, and revision conflict checks are covered.
 Analyst judgments do not change evaluation labels or scores.
+
+Reviewed findings now have authenticated JSON export with complete selected evidence,
+provenance, latest 100 saved review revisions, explicit history truncation/record omissions,
+and content checksums. Stale fingerprints/revisions require reloading before download.
+Original EVTX bytes and other capture records are referenced/omitted explicitly.

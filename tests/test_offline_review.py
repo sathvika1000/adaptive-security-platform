@@ -370,3 +370,126 @@ def test_concurrent_assessment_saves_have_one_winner(tmp_path):
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sorted(pool.map(save, ["one", "two"])) == ["conflict", "saved"]
     assert store.offline_reviews(key, 20, 0).revision == 1
+
+
+def export_endpoint(client):
+    reviews = review_endpoint(client)
+    state = client.get(reviews, headers=HEADERS).json()
+    return reviews.replace("/reviews", "/export"), state
+
+
+def test_review_export_auth_scope_hashes_and_saved_history(tmp_path, monkeypatch):
+    output = bundle(tmp_path, monkeypatch)
+    database = str(tmp_path / "live.db")
+    client = TestClient(create_app(database, KEY, {}, str(output)))
+    url, state = export_endpoint(client)
+    params = {"review_key": state["review_key"], "expected_revision": 0}
+    assert client.get(url, params=params).status_code == 401
+    assert client.get(url, headers=HEADERS).status_code == 422
+    assert (
+        client.get(url, params={**params, "review_key": "a" * 64}, headers=HEADERS).status_code
+        == 409
+    )
+    response = client.get(url, params=params, headers=HEADERS)
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["content-disposition"].startswith('attachment; filename="sample-')
+    assert response.headers["x-content-type-options"] == "nosniff"
+    exported = response.json()
+    assert exported["format"] == "asp.offline-finding-review" and exported["format_version"] == 1
+    assert exported["assessment_history"]["latest_revision"] == 0
+    assert exported["scope"]["original_evtx_included"] is False
+    assert exported["binding"]["capture"]["label"] == "unlabeled"
+    assert exported["scope"]["evidence_records"] == 25
+    assert len(exported["binding"]["evidence"]) == 25
+    assert exported["binding"]["evidence"][0]["attributes"]["raw_xml"] == "<private-record />"
+    assert (
+        sha256(
+            json.dumps(exported["binding"], sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        == state["review_key"]
+    )
+    digest = exported.pop("payload_sha256")
+    assert (
+        sha256(json.dumps(exported, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        == digest
+    )
+    # Saved journal changes make the previously displayed export revision stale.
+    edit = dict(
+        review_key=state["review_key"],
+        expected_revision=0,
+        disposition="suspicious",
+        note="Selected evidence assessment",
+    )
+    client.post(url.replace("/export", "/reviews"), headers=HEADERS, json=edit)
+    assert client.get(url, params=params, headers=HEADERS).status_code == 409
+    params["expected_revision"] = 1
+    artifact = client.get(url, params=params, headers=HEADERS).json()
+    assert artifact["assessment_history"]["entries"][0]["note"] == edit["note"]
+    assert artifact["assessment_history"]["history_truncated"] is False
+    assert KEY not in json.dumps(artifact)
+    assert client.get("/v1/incidents", headers=HEADERS).json() == []
+
+
+def test_export_omits_other_records_and_flags_truncated_history(tmp_path, monkeypatch):
+    from adaptive_security.offline_annotations import ReviewEdit
+    from adaptive_security.store import SQLiteStore
+
+    output = bundle(tmp_path, monkeypatch)
+    # Leave one record outside the stored finding; the loader checks complete evidence metadata.
+    path = output / "sample.findings.json"
+    findings = json.loads(path.read_text())
+    finding = findings[0]
+    finding["event_ids"] = finding["event_ids"][:-1]
+    for signal in finding["signals"]:
+        signal["evidence_event_ids"] = finding["event_ids"]
+    records = [
+        SecurityEvent.model_validate_json(line)
+        for line in (output / "sample.events.jsonl").read_text().splitlines()
+    ]
+    refs = set(finding["event_ids"])
+    finding["entities"] = [
+        entity.model_dump(mode="json")
+        for entity in sorted(
+            {entity for event in records if event.event_id in refs for entity in event.entities},
+            key=lambda entity: (entity.type, entity.value),
+        )
+    ]
+    path.write_text(json.dumps(findings))
+    database = str(tmp_path / "live.db")
+    client = TestClient(create_app(database, KEY, {}, str(output)))
+    url, state = export_endpoint(client)
+    store = SQLiteStore(database)
+    for revision in range(101):
+        store.append_offline_review(
+            state["review_key"],
+            ReviewEdit(
+                review_key=state["review_key"],
+                expected_revision=revision,
+                disposition="needs_review",
+                note=f"Assessment {revision + 1}",
+            ),
+            None,
+            f"test-{revision}",
+        )
+    artifact = client.get(
+        url, params=dict(review_key=state["review_key"], expected_revision=101), headers=HEADERS
+    ).json()
+    assert artifact["scope"]["capture_records"] == 25
+    assert artifact["scope"]["evidence_records"] == 24
+    assert len(artifact["binding"]["evidence"]) == 24
+    assert records[-1].event_id not in {
+        event["event_id"] for event in artifact["binding"]["evidence"]
+    }
+    history = artifact["assessment_history"]
+    assert history["latest_revision"] == 101 and history["included_revisions"] == 100
+    assert history["history_truncated"] is True
+    assert [entry["revision"] for entry in history["entries"]] == list(range(101, 1, -1))
+    assert (
+        client.get(
+            url.replace("/findings/", "/findings/missing-"),
+            params=dict(review_key=state["review_key"], expected_revision=101),
+            headers=HEADERS,
+        ).status_code
+        == 404
+    )
