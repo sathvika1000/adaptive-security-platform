@@ -13,7 +13,12 @@ from typing import Literal, Self
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from adaptive_security.connectors.windows_auth import extend_auth
-from adaptive_security.detection.windows_auth import RULES, AuthRule, detect_windows_auth
+from adaptive_security.detection.windows_auth import (
+    RULES,
+    AuthRule,
+    auth_telemetry_coverage,
+    detect_windows_auth,
+)
 from adaptive_security.evaluation import EvaluationCase
 from adaptive_security.evaluation_suite import Dataset, Suite, evaluate_suite
 from adaptive_security.evtx_evaluation import load_capture
@@ -201,6 +206,7 @@ def run(frozen_path: Path, destination: Path) -> dict[str, object]:
                     e.attributes.get("windows_event_id") == selected_id for e in events
                 ),
                 "finding_count": len(findings),
+                "telemetry_coverage": auth_telemetry_coverage(events, frozen.rule_id),
                 "label_review": capture.model_dump(mode="json", exclude={"path"}),
             }
             inventory.append(row)
@@ -251,6 +257,12 @@ def run(frozen_path: Path, destination: Path) -> dict[str, object]:
                         for c in frozen.captures
                     ),
                     "reviewed_benign_captures": sum(c.label == "benign" for c in frozen.captures),
+                    "captures_with_eligible_telemetry": sum(
+                        row["telemetry_coverage"]["eligible_records"] > 0 for row in inventory
+                    ),
+                    "captures_without_eligible_telemetry": sum(
+                        row["telemetry_coverage"]["eligible_records"] == 0 for row in inventory
+                    ),
                     "unlabeled_captures": sum(c.label == "unlabeled" for c in frozen.captures),
                     "live_deployment": "disabled for these rules",
                     "production_false_alert_rate": None,

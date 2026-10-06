@@ -158,6 +158,9 @@ def test_reviewed_labels_route_and_unknown_stays_out_of_metrics(tmp_path, monkey
     report = run(frozen_path, output)
     assert report["inventory"][0]["label"] == label
     assert report["inventory"][0]["records"] == 1
+    assert report["inventory"][0]["telemetry_coverage"]["status"] == "no_eligible_telemetry"
+    assert report["validation_status"]["captures_without_eligible_telemetry"] == 1
+    assert report["validation_status"]["captures_with_eligible_telemetry"] == 0
     assert report["validation_status"]["production_false_alert_rate"] is None
     assert report["validation_status"]["live_deployment"].startswith("disabled")
     if label == "unlabeled":
@@ -253,5 +256,7 @@ def test_finding_in_reviewed_benign_capture_is_false_positive(tmp_path, monkeypa
     report = run(frozen, tmp_path / "result")
     assert report["datasets"][0]["summary"]["false_positive"] == 1
     assert report["inventory"][0]["finding_count"] == 1
+    assert report["inventory"][0]["telemetry_coverage"]["eligible_records"] == 5
+    assert report["validation_status"]["captures_with_eligible_telemetry"] == 1
     assert report["validation_status"]["reviewed_benign_captures"] == 1
     assert report["validation_status"]["production_false_alert_rate"] is None

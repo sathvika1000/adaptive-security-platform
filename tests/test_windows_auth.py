@@ -6,7 +6,11 @@ import pytest
 
 from adaptive_security.connectors.evtx import normalize
 from adaptive_security.connectors.windows_auth import extend_auth
-from adaptive_security.detection.windows_auth import RULES, detect_windows_auth
+from adaptive_security.detection.windows_auth import (
+    RULES,
+    auth_telemetry_coverage,
+    detect_windows_auth,
+)
 from adaptive_security.evaluation import EvaluationCase, evaluate_report
 from adaptive_security.evtx_evaluation import Reservation, run
 
@@ -172,6 +176,59 @@ def test_development_runner_forces_partition_and_keeps_reservation_as_baseline(
     assert row["summary"]["precision"] is None and row["summary"]["recall"] is None
     assert report["reservation"]["partition"] == "held_out"
     assert "frozen_rule_commit" not in report and len(report["development_rule_sha256"]) == 2
+    assert report["inventory"][0]["telemetry_coverage"]["eligible_records"] == 5
+    assert report["inventory"][0]["telemetry_coverage"]["eligible_groups"] == 1
     assert "alice" not in json.dumps(report)
     findings = json.loads((tmp_path / "result" / f"{capture.capture_id}.findings.json").read_text())
     assert len(findings) == 1 and len(findings[0]["event_ids"]) == 5
+
+
+@pytest.mark.parametrize("number,rule", [(4648, RULES[0]), (4771, RULES[1])])
+def test_coverage_distinguishes_sparse_eligible_from_missing_telemetry(number, rule):
+    records = [event(number, i) for i in range(2)]
+    coverage = auth_telemetry_coverage([*records, records[0]], rule)
+    assert coverage["eligible_records"] == 2
+    assert coverage["eligible_groups"] == 1
+    assert coverage["distinct_target_accounts"] == 2
+    assert coverage["excluded_records"] == {"duplicate_identity": 1}
+    assert coverage["status"] == "eligible_telemetry_present"
+    assert not detect_windows_auth(records, rule)
+    empty = auth_telemetry_coverage([], rule)
+    assert empty["eligible_records"] == 0
+    assert empty["status"] == "no_eligible_telemetry"
+
+
+def test_coverage_reasons_account_for_every_input_without_disclosing_fields():
+    records = [
+        event(4648, 0),
+        event(4648, 1, TargetUserName="machine$"),
+        event(4648, 2, ProcessId=None),
+        event(4771, 3),
+        event(4648, 4).model_copy(update={"source": "wazuh"}),
+    ]
+    coverage = auth_telemetry_coverage(records, RULES[0])
+    assert coverage["excluded_records"] == {
+        "missing_or_machine_target": 1, "missing_grouping_fields": 1,
+        "wrong_event_family_or_outcome": 1, "unsupported_origin_or_mapping": 1,
+    }
+    assert coverage["eligible_records"] == 1
+    assert coverage["input_records"] == sum(coverage["excluded_records"].values()) + 1
+    assert "caller" not in json.dumps(coverage)
+
+
+def test_kerberos_coverage_rejects_wrong_status_and_unspecified_client():
+    coverage = auth_telemetry_coverage([
+        event(4771, 0, Status="0x12"), event(4771, 1, IpAddress="0.0.0.0"),
+    ], RULES[1])
+    assert coverage["eligible_records"] == 0
+    assert coverage["excluded_records"] == {
+        "wrong_event_family_or_outcome": 1, "missing_grouping_fields": 1,
+    }
+
+
+def test_account_count_across_groups_does_not_claim_a_detection_window():
+    records = [event(4648, i, ProcessId=str(i)) for i in range(5)]
+    coverage = auth_telemetry_coverage(records, RULES[0])
+    assert coverage["eligible_groups"] == 5
+    assert coverage["distinct_target_accounts"] == 5
+    assert not detect_windows_auth(records, RULES[0])

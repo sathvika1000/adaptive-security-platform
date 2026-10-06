@@ -94,3 +94,37 @@ output, preserve the transcript, and reserve the implementation/capture hashes b
 A five-account rule needs an appropriate multiaccount simulation; the existing two-failure Kerberos
 sample remains a development miss. This tool supplies reproducibility and label discipline; obtaining
 reviewed representative exports and reviewing candidate evidence are still required.
+
+## Check usable telemetry before interpreting quiet results
+
+Each inventory row now includes `telemetry_coverage`: input records, unique eligible
+records, eligible grouping contexts, distinct target accounts, and mutually exclusive
+exclusion counts. These checks share the detector's eligibility boundary, including
+Security provider/mapping, nonmachine targets, the exact event family/outcome/status,
+and required caller/session/process/server or host/client fields. Duplicate source/event
+identities are excluded once. Exclusion reasons follow that order and describe the first
+failed check, not every defect in a record. No account names or grouping values are
+added to the coverage summary.
+
+`no_eligible_telemetry` means the capture cannot exercise this rule's eligible input
+boundary; a declared benign case may still have a case-level true-negative verdict,
+but it is not useful benign telemetry coverage. `eligible_telemetry_present` also does
+not establish representative coverage: two eligible Kerberos failures remain below the
+five-account threshold. Distinct-account counts span all groups and times and must not
+be interpreted as a five-minute detection window. Validation status counts captures
+with and without eligible records separately; accuracy labels and metrics are unchanged.
+
+The same coverage summary appears in development EVTX evaluation output. To reuse
+existing downloaded bytes on a Mac without downloading again, choose a new output:
+
+```bash
+python -m adaptive_security.evtx_evaluation \
+  docs/EVALUATION_RESERVATIONS.json artifacts/kerberos-coverage-dev-v1 \
+  --capture-directory artifacts/explicit-credentials-dev-v1 \
+  --development-rule auth.kerberos_password_spray
+```
+
+This is a diagnostic rerun of inspected development captures, not fresh validation.
+Implementation hashes change with this update; existing local frozen plans will be
+refused. Preserve old reservations/results, then freeze a new plan for a new run.
+Previously inspected inputs remain development data.
