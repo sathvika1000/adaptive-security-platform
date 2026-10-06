@@ -165,3 +165,30 @@ if digest(artifact) != expected or digest(artifact["binding"]) != artifact["revi
 print("Content hashes match (author identity and labels are not verified)")
 PY
 ```
+
+## Browser regression checks
+
+CI now includes a `browser-review` job using real Chromium and disposable synthetic
+review bundles. It checks the UI against the real API: incorrect keys, evidence pagination
+and XML expansion, saved assessments, literal note rendering, conflicting saves/exports,
+JSON downloads and both hashes, reload persistence, named analyst attribution, forgotten
+key cleanup, and narrow-screen overflow. Desktop and narrow screenshots plus the HTML
+report are retained in the `browser-review-report` Actions artifact for seven days. Failure
+traces are retained too. These fixtures do not establish captured detection accuracy.
+
+To run the same checks locally with an active development virtual environment and Node 22+:
+
+```bash
+python -m pip install -e '.[dev,evtx]'
+npm ci
+npx playwright install chromium
+npm run test:browser
+```
+
+The runner creates two synthetic servers on loopback ports 8037 and 8038 and temporary
+SQLite databases, then shuts them down. It never reuses an already running server; choose
+free ports before running. It does not read your existing captures, review database, API
+keys, or analyst configuration. Reports use fixture records and test-only keys. Node and
+Playwright are developer tooling only; running the platform itself still requires no npm
+installation. These Chromium checks cover the tested desktop/narrow layouts; they are
+not an accessibility audit or a claim that every browser is tested.

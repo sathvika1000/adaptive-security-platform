@@ -185,3 +185,9 @@ Reviewed findings now have authenticated JSON export with complete selected evid
 provenance, latest 100 saved review revisions, explicit history truncation/record omissions,
 and content checksums. Stale fingerprints/revisions require reloading before download.
 Original EVTX bytes and other capture records are referenced/omitted explicitly.
+
+Real Chromium browser regression checks now run in CI against disposable synthetic
+review servers: authentication, evidence, analyst saves and conflicts, downloads/hashes,
+key cleanup and narrow layout. Reports/screenshots/failure traces are Actions artifacts.
+This verifies UI behavior independently of the earlier DOM harness and does not change
+detection-validation requirements.
