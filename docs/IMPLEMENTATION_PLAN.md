@@ -191,3 +191,8 @@ review servers: authentication, evidence, analyst saves and conflicts, downloads
 key cleanup and narrow layout. Reports/screenshots/failure traces are Actions artifacts.
 This verifies UI behavior independently of the earlier DOM harness and does not change
 detection-validation requirements.
+
+Offline assessment queue implemented: current-fingerprint latest dispositions, pending-first
+pagination, capture/disposition filters, global/per-capture workload counts, exact-finding
+navigation and automatic refresh after saves. Latest revisions are read consistently in
+SQLite; old/different-context journals are excluded. Browser coverage checks the queue flow.

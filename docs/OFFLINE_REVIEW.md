@@ -192,3 +192,28 @@ keys, or analyst configuration. Reports use fixture records and test-only keys. 
 Playwright are developer tooling only; running the platform itself still requires no npm
 installation. These Chromium checks cover the tested desktop/narrow layouts; they are
 not an accessibility audit or a claim that every browser is tested.
+
+## Assessment queue
+
+The **Assessment queue** shows findings across the configured run. It defaults to
+**Needs review**; use disposition and capture filters to narrow the list, or choose
+**All dispositions**. Click a queue item to open that exact finding and its evidence.
+Queue entries show the latest disposition/revision and named or shared-key attribution.
+**Refresh queue** picks up assessments saved by another session. Saving a review in this
+page refreshes queue counts automatically without changing the open finding or draft.
+
+Progress always covers the entire configured run, even with filters selected. **Assessed**
+means the latest saved disposition differs from `needs_review`. Unsaved findings and
+findings whose latest disposition is `needs_review` are pending. **No saved assessment**
+counts only findings with no journal revision for their current evidence/context fingerprint.
+Changing a disposition back to Needs review restores pending status without deleting
+history. Capture cards show their own progress; captures without findings show zero work,
+which does not establish benign activity. These workload counts are not accuracy metrics.
+
+`GET /v1/offline-review/queue` requires the platform API key. Optional `disposition` and
+`capture_id` filter entries before `limit` (1–100) and `offset` pagination. Responses contain
+global `counts`, per-capture `capture_counts`, filtered `matching` count, and brief `entries`
+without notes/raw evidence. Pending findings sort first, then capture/finding ID. Counts and
+latest revisions are read in one database transaction; changes between page requests can
+move entries, so refresh to restart pagination. Old journals outside the current bundle's
+fingerprints do not count. No run configuration returns an empty queue and zero counts.

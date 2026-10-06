@@ -44,6 +44,25 @@
         <details class="evidence-details"><summary>Run provenance and limitations</summary>
           <pre id="offline-provenance"></pre></details>
       </div>
+      <section id="offline-queue-panel" class="list-panel queue-panel" hidden aria-labelledby="offline-queue-title">
+        <h2 id="offline-queue-title">Assessment queue</h2>
+        <p id="offline-queue-progress" class="explanation"></p>
+        <p class="hint">Counts cover findings in this configured run. Assessed means a saved disposition other than Needs review; it does not measure detection accuracy.</p>
+        <div class="queue-controls">
+          <div><label for="offline-queue-filter">Disposition</label>
+            <select id="offline-queue-filter">
+              <option value="needs_review">Needs review</option><option value="">All dispositions</option>
+              <option value="suspicious">Suspicious</option><option value="benign_activity">Benign activity</option>
+              <option value="confirmed_malicious">Confirmed malicious</option><option value="inconclusive">Inconclusive</option>
+            </select></div>
+          <div><label for="offline-queue-capture">Capture</label><select id="offline-queue-capture"><option value="">All captures</option></select></div>
+          <button id="offline-queue-refresh" type="button" class="secondary">Refresh queue</button>
+        </div>
+        <p id="offline-queue-scope" class="muted"></p>
+        <div id="offline-queue-list" class="incident-list queue-list"></div>
+        <div class="pager"><button id="offline-queue-prev" type="button" class="secondary">Previous findings</button>
+          <span id="offline-queue-page"></span><button id="offline-queue-next" type="button" class="secondary">Next findings</button></div>
+      </section>
       <div class="workspace">
         <section class="list-panel" aria-labelledby="offline-captures-title">
           <div class="section-head"><h2 id="offline-captures-title">Captures</h2></div>

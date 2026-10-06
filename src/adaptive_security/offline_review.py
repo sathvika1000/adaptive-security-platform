@@ -4,6 +4,7 @@ import json
 import re
 from collections import Counter
 from dataclasses import dataclass
+from functools import cached_property
 from hashlib import sha256
 from pathlib import Path
 from threading import Lock
@@ -45,6 +46,14 @@ class ReviewSnapshot:
     rule_id: str
     provenance: dict[str, Any]
     captures: dict[str, CaptureSnapshot]
+
+    @cached_property
+    def finding_keys(self) -> dict[tuple[str, str], str]:
+        return {
+            (capture_id, finding.incident_id): finding_review_key(self, capture, finding)
+            for capture_id, capture in self.captures.items()
+            for finding in capture.findings
+        }
 
 
 class BundleReader:

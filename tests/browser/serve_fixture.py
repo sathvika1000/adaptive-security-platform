@@ -23,7 +23,7 @@ def serve(port: int, named: bool) -> None:
         root = Path(directory)
         captures = []
         records = {}
-        for identifier, number in (("sample", 25), ("thin-sample", 2)):
+        for identifier, number in (("sample", 25), ("thin-sample", 2), ("other-sample", 6)):
             raw = f"synthetic parser boundary {identifier}".encode()
             path = root / f"{identifier}.evtx"
             path.write_bytes(raw)

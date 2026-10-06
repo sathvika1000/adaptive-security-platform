@@ -579,3 +579,20 @@ class SQLiteStore:
             conn.execute("INSERT INTO offline_finding_reviews VALUES (?, ?, ?)",
                          (review_key, entry.revision, entry.model_dump_json()))
         return entry
+
+    def latest_offline_reviews(self, keys: list[str]) -> dict[str, ReviewEntry]:
+        """Read latest revisions for the current bundle in one consistent transaction."""
+        result = {}
+        with self.transaction() as conn:
+            for start in range(0, len(keys), 400):
+                batch = keys[start:start + 400]
+                placeholders = ",".join("?" for _ in batch)
+                rows = conn.execute(
+                    "SELECT r.review_key, r.body FROM offline_finding_reviews AS r JOIN "
+                    "(SELECT review_key, MAX(revision) AS revision FROM offline_finding_reviews "
+                    f"WHERE review_key IN ({placeholders}) GROUP BY review_key) AS latest "
+                    "ON r.review_key=latest.review_key AND r.revision=latest.revision", batch,
+                )
+                for key, body in rows:
+                    result[key] = ReviewEntry.model_validate_json(body)
+        return result

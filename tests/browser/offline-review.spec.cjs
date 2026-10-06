@@ -128,3 +128,32 @@ test('narrow layout keeps review controls and evidence within the viewport', asy
   await expect(page.locator('#offline-save-review')).toBeVisible();
   await page.screenshot({path: testInfo.outputPath('offline-narrow.png'), fullPage: true});
 });
+
+test('assessment queue filters, opens the exact finding, and refreshes progress after save', async ({page, request}) => {
+  await openCapture(page);
+  const before = await (await request.get('/v1/offline-review/queue', {headers})).json();
+  await expect(page.locator('#offline-queue-progress')).toContainText(`${before.counts.assessed} of 2 findings assessed`);
+  await page.locator('#offline-queue-filter').selectOption('');
+  await expect(page.locator('#offline-queue-list button')).toHaveCount(2);
+  await page.locator('#offline-queue-capture').selectOption('other-sample');
+  await expect(page.locator('#offline-queue-list button')).toHaveCount(1);
+  await page.locator('#offline-queue-list button').click();
+  await expect(page.locator('#offline-title')).toHaveText('other-sample');
+  await expect(page.locator('#offline-events .event')).toHaveCount(6);
+  await expect(page.locator('#offline-save-review')).toBeEnabled();
+  await page.locator('#offline-note').fill('Reviewed the other capture independently');
+  await page.locator('#offline-disposition').selectOption('benign_activity');
+  await page.locator('#offline-save-review').click();
+  await expect(page.locator('#offline-queue-progress')).toContainText(`${before.counts.assessed+1} of 2 findings assessed`);
+  await expect(page.locator('#offline-queue-list')).toContainText('benign activity');
+  await page.locator('#offline-queue-filter').selectOption('needs_review');
+  await expect(page.locator('#offline-queue-list button')).toHaveCount(0);
+  await expect(page.locator('#offline-queue-list')).toContainText('No findings match');
+  await page.locator('#offline-queue-filter').selectOption('benign_activity');
+  await expect(page.locator('#offline-queue-list button')).toHaveCount(1);
+  await page.locator('#offline-queue-capture').selectOption('thin-sample');
+  await expect(page.locator('#offline-queue-list button')).toHaveCount(0);
+  await page.getByRole('button', {name: 'Forget key'}).click();
+  expect(await page.locator('#offline-queue-list').textContent()).toBe('');
+  await expect(page.locator('#offline-queue-panel')).toBeHidden();
+});
