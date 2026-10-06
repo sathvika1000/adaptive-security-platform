@@ -94,3 +94,8 @@ select, textarea { font: inherit; border: 1px solid #b9cbd0; border-radius: 9px;
 .queue-controls > div { min-width: 0; flex: 1; }
 .queue-controls select { width: 100%; }
 .queue-list { grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); }
+@media (max-width: 540px) {
+  .queue-controls { flex-direction: column; align-items: stretch; }
+  .queue-controls > div { width: 100%; }
+  .queue-controls button { align-self: start; }
+}
