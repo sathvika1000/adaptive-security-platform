@@ -2,6 +2,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 MAX_ALERT_BYTES = 1024 * 1024
+MAX_TOOL_REQUEST_BYTES = 32 * 1024
 
 
 class AlertBodyLimit:
@@ -12,20 +13,25 @@ class AlertBodyLimit:
         if (
             scope["type"] != "http"
             or scope["method"] != "POST"
-            or scope["path"] != "/v1/events/wazuh"
+            or (scope["path"] != "/v1/events/wazuh"
+                and not scope["path"].startswith("/v1/investigation-tools/"))
         ):
             await self.app(scope, receive, send)
             return
 
+        tool_request = scope["path"].startswith("/v1/investigation-tools/")
+        limit = MAX_TOOL_REQUEST_BYTES if tool_request else MAX_ALERT_BYTES
+        detail = "Tool request exceeds 32 KiB" if tool_request else "Alert exceeds 1 MiB"
+
         async def reject() -> None:
-            response = JSONResponse({"detail": "Alert exceeds 1 MiB"}, status_code=413)
+            response = JSONResponse({"detail": detail}, status_code=413)
             await response(scope, receive, send)
 
         headers = dict(scope["headers"])
         content_length = headers.get(b"content-length")
         if content_length is not None:
             try:
-                if int(content_length) > MAX_ALERT_BYTES:
+                if int(content_length) > limit:
                     await reject()
                     return
             except ValueError:
@@ -39,7 +45,7 @@ class AlertBodyLimit:
                 return
             chunk = message.get("body", b"")
             size += len(chunk)
-            if size > MAX_ALERT_BYTES:
+            if size > limit:
                 await reject()
                 return
             chunks.append(chunk)

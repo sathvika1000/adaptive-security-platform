@@ -20,6 +20,13 @@ from adaptive_security.connectors.wazuh import WazuhAlert, WazuhConnector
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentTransition
 from adaptive_security.http import AlertBodyLimit
+from adaptive_security.investigation_tools import (
+    ToolFailure,
+    ToolName,
+    ToolRequest,
+    ToolResult,
+    execute_tool,
+)
 from adaptive_security.offline_annotations import (
     Disposition,
     ReviewConflict,
@@ -127,7 +134,7 @@ def create_app(
             response = await call_next(request)
             status_code = response.status_code
             response.headers["X-Request-ID"] = request_id
-            if request.url.path.startswith("/v1/offline-review"):
+            if request.url.path.startswith(("/v1/offline-review", "/v1/investigation-tools/")):
                 response.headers["Cache-Control"] = "no-store"
             return response
         finally:
@@ -212,6 +219,19 @@ def create_app(
         if snapshot is None or capture_id not in snapshot.captures:
             raise HTTPException(status_code=404, detail="Offline capture not found")
         return snapshot.captures[capture_id]
+
+    @app.post("/v1/investigation-tools/{tool}", response_model=ToolResult,
+              dependencies=[Depends(authorize)])
+    def investigation_tool(tool: ToolName, invocation: ToolRequest) -> Response:
+        snapshot = review_snapshot()
+        if snapshot is None:
+            raise HTTPException(status_code=404, detail="Offline finding not found")
+        try:
+            result = execute_tool(snapshot, tool, invocation)
+        except ToolFailure as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
+        # Use exactly the bounded serialization checked by execute_tool.
+        return Response(result.model_dump_json(), media_type="application/json")
 
     @app.get("/v1/offline-review", dependencies=[Depends(authorize)])
     def offline_index() -> dict[str, object]:

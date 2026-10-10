@@ -209,3 +209,12 @@ A missing-telemetry quiet result remains separate from usable inputs below thres
 Both local validation and public development evaluation include this diagnostic; labels,
 metrics, five-account thresholds and live enablement remain unchanged. Fresh attack and
 representative benign exports are still required.
+
+The first investigation tool slice now exposes three authenticated read-only operations over
+validated offline snapshots with strict inputs, current-fingerprint checks, capture/time/entity
+scope, original event references, explicit coverage and request/response budgets. Security
+boundary tests cover scope escape, extra executable/query inputs, streamed bodies, oversized
+responses and unchanged live/assessment state. The standards mapping and ordered MCP,
+dedicated authorization, bounded reasoning, source-adapter and pilot gates are recorded in
+[INVESTIGATION_ARCHITECTURE.md](INVESTIGATION_ARCHITECTURE.md). No model, MCP transport,
+tenant isolation or autonomous response is enabled by this slice.
