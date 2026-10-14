@@ -225,3 +225,11 @@ Paginated scope discovery replaces the earlier incorrect queue-fingerprint setup
 restricted callers see only configured grants, including stale status without replacement hashes.
 Configuration and restart-based revocation are documented in INVESTIGATION_ACCESS.md. Remote
 MCP authentication, tenant isolation, execution budgets and model reasoning remain separate gates.
+
+Local stdio MCP transport now reuses the strict investigation contracts and server-owned grants
+with SDK 2.3.0 pinned in an optional extra. One owner-private identity file and one validated
+snapshot are loaded per process; broader platform credentials are rejected. The wrapper bounds
+incoming frames, argument/result bytes and tool-call attempts, and returns metadata-only errors
+and logs. Protocol integration tests include an actual stdio child and the Mac smoke command.
+MCP_STDIO.md documents scope semantics and local trust. Remote authentication, hard execution
+deadlines, tenant isolation and controlled model reasoning remain future gates.
