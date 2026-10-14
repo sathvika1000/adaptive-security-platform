@@ -20,7 +20,15 @@ from adaptive_security.connectors.wazuh import WazuhAlert, WazuhConnector
 from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentTransition
 from adaptive_security.http import AlertBodyLimit
+from adaptive_security.investigation_access import (
+    GrantedScope,
+    InvestigationIdentity,
+    ScopeCatalog,
+    authenticate_investigation,
+    investigation_identities,
+)
 from adaptive_security.investigation_tools import (
+    MAX_TOOL_RESPONSE_BYTES,
     ToolFailure,
     ToolName,
     ToolRequest,
@@ -111,6 +119,7 @@ def create_app(
     db_path: str | None = None, api_key: str | None = None,
     analyst_keys: dict[str, str | dict[str, object]] | None = None,
     offline_review_path: str | None = None,
+    investigation_keys: object | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Adaptive Security Platform", version="0.1.0")
     app.add_middleware(AlertBodyLimit)
@@ -121,6 +130,15 @@ def create_app(
     configured = (analyst_keys if analyst_keys is not None else
                   json.loads(os.environ.get("ASP_ANALYST_KEYS_JSON") or "{}"))
     analyst_digests = _analyst_digests(configured, key)
+    try:
+        investigation_config = (investigation_keys if investigation_keys is not None else
+                                json.loads(os.environ.get("ASP_INVESTIGATION_KEYS_JSON") or "{}"))
+    except ValueError:
+        raise ValueError("invalid investigation identity configuration JSON") from None
+    reserved = {digest for _, digest, _ in analyst_digests}
+    if key:
+        reserved.add(hashlib.sha256(key.encode("utf-8")).hexdigest())
+    investigation_callers = investigation_identities(investigation_config, reserved)
 
     @app.middleware("http")
     async def trace_request(
@@ -145,6 +163,7 @@ def create_app(
                         "method": request.method,
                         "path": getattr(request.scope.get("route"), "path", "<unmatched>"),
                         "status": status_code,
+                        "investigation_actor": getattr(request.state, "investigation_actor", None),
                         "duration_ms": round((perf_counter() - started) * 1000, 2),
                     }
                 )
@@ -169,6 +188,24 @@ def create_app(
         if actor is None:
             raise HTTPException(status_code=401, detail="Unauthorized")
         return actor
+
+    def authorize_investigation(
+        request: Request,
+        x_api_key: str | None = Header(default=None),
+        x_investigation_key: str | None = Header(default=None),
+    ) -> InvestigationIdentity | None:
+        if x_api_key is not None and x_investigation_key is not None:
+            raise HTTPException(status_code=400, detail="Use exactly one credential type")
+        if x_investigation_key is None:
+            authorize(x_api_key)
+            request.state.investigation_actor = "platform"
+            return None
+        try:
+            identity = authenticate_investigation(investigation_callers, x_investigation_key)
+            request.state.investigation_actor = identity.actor
+            return identity
+        except ToolFailure as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -220,9 +257,47 @@ def create_app(
             raise HTTPException(status_code=404, detail="Offline capture not found")
         return snapshot.captures[capture_id]
 
-    @app.post("/v1/investigation-tools/{tool}", response_model=ToolResult,
-              dependencies=[Depends(authorize)])
-    def investigation_tool(tool: ToolName, invocation: ToolRequest) -> Response:
+    @app.get("/v1/investigation-tools/scopes", response_model=ScopeCatalog)
+    def investigation_scopes(
+        identity: Annotated[InvestigationIdentity | None, Depends(authorize_investigation)],
+        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+        offset: Annotated[int, Query(ge=0, le=10_000)] = 0,
+    ) -> Response:
+        snapshot = review_snapshot()
+        current = snapshot.finding_keys if snapshot is not None else {}
+        if identity is None:
+            entries = [GrantedScope(
+                capture_id=capture_id, finding_id=finding_id, review_key=review_key,
+                tools=["get_finding_evidence", "get_related_events", "get_telemetry_coverage"],
+                stale=False,
+            ) for (capture_id, finding_id), review_key in sorted(current.items())]
+        else:
+            entries = [GrantedScope(
+                **grant.model_dump(),
+                stale=current.get((grant.capture_id, grant.finding_id)) != grant.review_key,
+            ) for grant in identity.grants]
+        selected = entries[offset:offset + limit]
+        end = offset + len(selected)
+        catalog = ScopeCatalog(
+            actor=identity.actor if identity is not None else "platform",
+            matching=len(entries), next_offset=end if end < len(entries) else None,
+            entries=selected,
+        )
+        body = catalog.model_dump_json()
+        if len(body.encode("utf-8")) > MAX_TOOL_RESPONSE_BYTES:
+            raise HTTPException(status_code=413, detail="Scope response exceeds 64 KiB")
+        return Response(body, media_type="application/json")
+
+    @app.post("/v1/investigation-tools/{tool}", response_model=ToolResult)
+    def investigation_tool(
+        tool: ToolName, invocation: ToolRequest,
+        identity: Annotated[InvestigationIdentity | None, Depends(authorize_investigation)],
+    ) -> Response:
+        if identity is not None:
+            try:
+                identity.require(tool, invocation)
+            except ToolFailure as exc:
+                raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
         snapshot = review_snapshot()
         if snapshot is None:
             raise HTTPException(status_code=404, detail="Offline finding not found")

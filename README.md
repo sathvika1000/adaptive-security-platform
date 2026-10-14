@@ -447,3 +447,8 @@ nearby events sharing an exact entity, and capture-wide telemetry coverage. Stri
 bind the current evidence fingerprint; responses preserve references and explicit limitations.
 See the [investigation architecture and standards mapping](docs/INVESTIGATION_ARCHITECTURE.md)
 for contracts, security checks and the sequence toward MCP and a controlled reasoning agent.
+
+Dedicated investigation identities can now access only explicitly granted findings and tools
+through `X-Investigation-Key`. Their scopes are pinned to evidence fingerprints and cannot
+authorize other protected platform APIs. See [read-only access setup](docs/INVESTIGATION_ACCESS.md)
+for local configuration, scoped discovery, verification and restart-based revocation.
