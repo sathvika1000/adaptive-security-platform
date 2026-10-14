@@ -441,3 +441,9 @@ The [review guide](docs/OFFLINE_REVIEW.md) describes printing, scope limits, and
 An assessment queue now lists findings across the offline run, with disposition/capture
 filters, pending-first pagination, and review progress counts. Saving assessments refreshes
 the queue; workload counts remain separate from detection accuracy.
+
+Three authenticated, bounded offline investigation tools now retrieve finding evidence,
+nearby events sharing an exact entity, and capture-wide telemetry coverage. Strict requests
+bind the current evidence fingerprint; responses preserve references and explicit limitations.
+See the [investigation architecture and standards mapping](docs/INVESTIGATION_ARCHITECTURE.md)
+for contracts, security checks and the sequence toward MCP and a controlled reasoning agent.
