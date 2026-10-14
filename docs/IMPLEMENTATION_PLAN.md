@@ -218,3 +218,10 @@ responses and unchanged live/assessment state. The standards mapping and ordered
 dedicated authorization, bounded reasoning, source-adapter and pilot gates are recorded in
 [INVESTIGATION_ARCHITECTURE.md](INVESTIGATION_ARCHITECTURE.md). No model, MCP transport,
 tenant isolation or autonomous response is enabled by this slice.
+
+Dedicated investigation identities now enforce server-owned finding/fingerprint/tool grants,
+separate credentials from platform/analyst keys, and reject other protected read/write routes.
+Paginated scope discovery replaces the earlier incorrect queue-fingerprint setup instruction;
+restricted callers see only configured grants, including stale status without replacement hashes.
+Configuration and restart-based revocation are documented in INVESTIGATION_ACCESS.md. Remote
+MCP authentication, tenant isolation, execution budgets and model reasoning remain separate gates.
