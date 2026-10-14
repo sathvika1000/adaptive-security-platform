@@ -1,7 +1,7 @@
 # Evidence-grounded security investigation
 
-Status: offline tools and dedicated content-bound read-only identities implemented;
-model reasoning, MCP transport and live investigation connectors are not implemented.
+Status: offline tools, dedicated read-only identities and local stdio MCP transport implemented;
+model reasoning, remote MCP authentication and live investigation connectors are not implemented.
 Reference review: 2026-10-10. Implementation update: 2026-10-14.
 
 ## Product goal and first use case
@@ -27,12 +27,13 @@ certification, complete framework coverage or a third party assessment.
 | [OWASP API Security Top 10 2023](https://owasp.org/API-Security/editions/2023/en/0x11-t10/), API1/API2/API5 | Authenticate the HTTP entry point; resolve finding inside its capture; dedicated identities have explicit content-bound finding/tool grants; reject stale evidence fingerprints and protected write access | Tenant isolation, centralized identity lifecycle and transport-specific authorization; the existing shared platform key retains broad access |
 | Same reference, API3/API4/API7/API10 | Project selected fields; reject unknown inputs and coercion; bound request bytes, response bytes and page size; accept no caller-supplied URL/path/query/command; reuse validated snapshots | Rate/concurrency limits, adapter timeouts and total execution budgets; connector-specific egress policy and sensitive-field policy |
 | [OWASP Top 10 for Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/), ASI01/ASI02/ASI03/ASI05/ASI06 | Treat tool data as untrusted observations; expose no executable tool; enforce server-owned grants and reject key reuse across platform, analyst and investigation identities | Adversarial model tests, session isolation, bounded reasoning and validated citations |
-| [MCP security best practices](https://modelcontextprotocol.io/specification/latest/basic/security_best_practices) and [official Python SDK](https://github.com/modelcontextprotocol/python-sdk) | Keep policy and evidence access independent of any model or transport; no arbitrary remote fetches | Pin a reviewed SDK release; implement transport authentication, audience/scope checks, consent where applicable, no token passthrough and transport-specific tests before remote use |
+| [MCP security best practices](https://modelcontextprotocol.io/specification/latest/basic/security_best_practices) and [official Python SDK](https://github.com/modelcontextprotocol/python-sdk) | Pin SDK 2.3.0 for local stdio; keep policy outside the transport; private single-identity launch configuration; no arbitrary remote fetches; protocol boundary tests | Implement remote transport authentication, audience/scope checks, consent where applicable, no token passthrough and transport-specific tests before remote use |
 | [NIST SSDF SP 800-218 v1.1](https://csrc.nist.gov/pubs/sp/800/218/final) | Define a threat boundary and security acceptance tests; run lint, types and regression tests in CI | Dependency/release provenance, vulnerability management, deployment hardening and reproducible release checks |
 | [NIST AI RMF](https://www.nist.gov/itl/ai-risk-management-framework) | Record intended use, uncertainty, limitations and validation partitions | Evaluate the model separately from the detector; measure unsupported claims, citation validity, abstention, analyst usefulness, latency and cost |
 
 Use the SDK as a transport implementation reference, not as a replacement for our authorization
-or evidence policy. Its API evolves; this slice adds no MCP dependency. Future source adapters
+or evidence policy. Its API evolves; the optional MCP extra pins SDK 2.3.0 for the reviewed local
+integration. See [MCP stdio setup](MCP_STDIO.md) for its explicit local trust boundary. Future adapters
 must translate fixed tool requests into provider-specific queries on the server. A model must
 never supply unrestricted SQL, SIEM query language, credentials or destination addresses.
 
@@ -159,12 +160,12 @@ startup validation, restart revocation and rejection at other protected read/wri
 
 ### 1. Transport and authorization
 
-Dedicated read-only identities and server-controlled capture/finding/tool grants are now
-implemented and tested. Next wrap these exact contracts with the reviewed official MCP SDK.
-Test transport-specific invalid audiences/scopes and preserve the cross-scope, credential
-separation and denied-write checks at the MCP boundary.
-Start locally; remote deployment requires the applicable MCP transport/auth controls. Add
-rate/concurrency limits and time budgets rather than relying on page limits alone.
+Dedicated read-only identities and server-controlled capture/finding/tool grants are implemented.
+The local stdio MCP wrapper now uses the pinned official SDK, shared strict schemas and grant
+checks, private single-identity configuration, actual protocol tests, bounded frames/arguments/
+results and a process call budget. It adds no HTTP listener or model. Remote deployment still
+requires transport-specific invalid audience/scope tests and the applicable MCP authentication,
+rate/concurrency controls and execution time budgets.
 
 ### 2. Bounded single-agent investigation
 

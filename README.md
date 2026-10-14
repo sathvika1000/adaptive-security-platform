@@ -452,3 +452,8 @@ Dedicated investigation identities can now access only explicitly granted findin
 through `X-Investigation-Key`. Their scopes are pinned to evidence fingerprints and cannot
 authorize other protected platform APIs. See [read-only access setup](docs/INVESTIGATION_ACCESS.md)
 for local configuration, scoped discovery, verification and restart-based revocation.
+
+An optional local stdio MCP server now wraps these same read-only grants with the pinned official
+SDK. It exposes granted tools and scoped discovery, bounds inputs/results/calls, and includes a
+real-process Mac smoke command. See [MCP setup and security boundary](docs/MCP_STDIO.md).
+No model, HTTP MCP listener or remote authentication is enabled by this transport slice.

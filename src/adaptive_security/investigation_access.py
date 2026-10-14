@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel, ConfigDict, Field
 
 from adaptive_security.investigation_tools import ToolFailure, ToolName, ToolRequest
+from adaptive_security.offline_review import ReviewSnapshot
 
 
 class InvestigationGrant(BaseModel):
@@ -96,3 +97,28 @@ class ScopeCatalog(BaseModel):
     matching: int
     next_offset: int | None
     entries: list[GrantedScope]
+
+
+def scope_catalog(
+    snapshot: ReviewSnapshot | None, identity: InvestigationIdentity | None,
+    limit: int, offset: int,
+) -> ScopeCatalog:
+    """Shared discovery projection for authenticated HTTP and local MCP callers."""
+    current = snapshot.finding_keys if snapshot is not None else {}
+    if identity is None:
+        entries = [GrantedScope(
+            capture_id=capture_id, finding_id=finding_id, review_key=review_key,
+            tools=["get_finding_evidence", "get_related_events", "get_telemetry_coverage"],
+            stale=False,
+        ) for (capture_id, finding_id), review_key in sorted(current.items())]
+    else:
+        entries = [GrantedScope(
+            **grant.model_dump(),
+            stale=current.get((grant.capture_id, grant.finding_id)) != grant.review_key,
+        ) for grant in identity.grants]
+    selected = entries[offset:offset + limit]
+    end = offset + len(selected)
+    return ScopeCatalog(
+        actor=identity.actor if identity is not None else "platform",
+        matching=len(entries), next_offset=end if end < len(entries) else None, entries=selected,
+    )

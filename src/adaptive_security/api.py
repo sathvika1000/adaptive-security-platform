@@ -21,11 +21,11 @@ from adaptive_security.domain.events import SecurityEvent
 from adaptive_security.domain.incidents import Incident, IncidentTransition
 from adaptive_security.http import AlertBodyLimit
 from adaptive_security.investigation_access import (
-    GrantedScope,
     InvestigationIdentity,
     ScopeCatalog,
     authenticate_investigation,
     investigation_identities,
+    scope_catalog,
 )
 from adaptive_security.investigation_tools import (
     MAX_TOOL_RESPONSE_BYTES,
@@ -264,25 +264,7 @@ def create_app(
         offset: Annotated[int, Query(ge=0, le=10_000)] = 0,
     ) -> Response:
         snapshot = review_snapshot()
-        current = snapshot.finding_keys if snapshot is not None else {}
-        if identity is None:
-            entries = [GrantedScope(
-                capture_id=capture_id, finding_id=finding_id, review_key=review_key,
-                tools=["get_finding_evidence", "get_related_events", "get_telemetry_coverage"],
-                stale=False,
-            ) for (capture_id, finding_id), review_key in sorted(current.items())]
-        else:
-            entries = [GrantedScope(
-                **grant.model_dump(),
-                stale=current.get((grant.capture_id, grant.finding_id)) != grant.review_key,
-            ) for grant in identity.grants]
-        selected = entries[offset:offset + limit]
-        end = offset + len(selected)
-        catalog = ScopeCatalog(
-            actor=identity.actor if identity is not None else "platform",
-            matching=len(entries), next_offset=end if end < len(entries) else None,
-            entries=selected,
-        )
+        catalog = scope_catalog(snapshot, identity, limit, offset)
         body = catalog.model_dump_json()
         if len(body.encode("utf-8")) > MAX_TOOL_RESPONSE_BYTES:
             raise HTTPException(status_code=413, detail="Scope response exceeds 64 KiB")
