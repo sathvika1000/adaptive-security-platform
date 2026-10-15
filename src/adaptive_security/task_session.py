@@ -16,10 +16,21 @@ EXPANDED_SUITE_SHA256 = "bf1f1ee908e1cac35e775a0317e382ad41d542909b3db44379d6fbf
 
 
 def bundled_suite(version: str = "baseline") -> bytes:
-    if version not in {"baseline", "expanded"}:
+    variants = {
+        "baseline": ("analyst-tasks.json", SUITE_SHA256),
+        "expanded": ("analyst-tasks-v2.json", EXPANDED_SUITE_SHA256),
+        "labelled": (
+            "analyst-tasks-labelled.json",
+            "da17d740c282e38b1237a38405ef643feae563343d2b5fbfdcbc48e75c0072df",
+        ),
+        "neutral": (
+            "analyst-tasks-neutral.json",
+            "eaf49c2548ce3c0101f0422c6131e81fde417687f365b8f45e81efba8eaa6c19",
+        ),
+    }
+    if version not in variants:
         raise ValueError("Unknown bundled suite version")
-    filename = "analyst-tasks.json" if version == "baseline" else "analyst-tasks-v2.json"
-    expected = SUITE_SHA256 if version == "baseline" else EXPANDED_SUITE_SHA256
+    filename, expected = variants[version]
     raw = files("adaptive_security").joinpath("fixtures", filename).read_bytes()
     if hashlib.sha256(raw).hexdigest() != expected:
         raise ValueError("Bundled suite digest mismatch")
@@ -117,7 +128,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     parser.add_argument("--slow-local", action="store_true")
-    parser.add_argument("--suite-version", choices=("baseline", "expanded"), default="baseline")
+    parser.add_argument(
+        "--suite-version",
+        choices=("baseline", "expanded", "labelled", "neutral"),
+        default="baseline",
+    )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--ollama-model")
     mode.add_argument("--smoke", action="store_true")
