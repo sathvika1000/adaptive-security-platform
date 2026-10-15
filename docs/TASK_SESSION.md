@@ -70,3 +70,37 @@ per-task ceilings: three decisions, two tool calls, 90 seconds and 13,824 charge
 The three tasks run sequentially. No real model results are shipped with this command.
 The tasks and their rubrics remain draft synthetic development material requiring
 independent review. No held-out accuracy, production readiness or live response is inferred.
+
+## When local inference times out
+
+A report with some confirmed prompt/generated tokens, `status: timeout` and an
+`unconfirmed_requests` count indicates that some responses were processed but at least
+one request did not reach confirmed usage accounting before a deadline. It does not
+establish why that request was slow or whether the resulting answer would be valid.
+Do not treat a timeout as a wrong security conclusion or return its token reservation.
+
+For a slower local evaluation, preserve the first session and run in a new directory:
+
+```bash
+python -m adaptive_security.task_session \
+  artifacts/gemma3-session-slow-v1 --ollama-model gemma3:4b --slow-local
+```
+
+The default profile is unchanged: HTTP timeout 25 seconds, controller operation deadline
+30 seconds and total task deadline 90 seconds. The opt-in slow profile uses 85 seconds
+for the HTTP timeout, 90 seconds per controller operation and 270 seconds per task.
+The three-task suite may therefore take up to 810 seconds (13.5 minutes). Controller
+bounds remain finite: operation deadlines cannot exceed 120 seconds and task deadlines
+cannot exceed 360 seconds. HTTP client timeouts are phase timeouts; the controller
+provides the overall operation deadline.
+
+Both profiles retain three decisions, two tool calls, 13,824 charged tokens per task,
+512 maximum generated tokens per request and the same evidence/citation checks. The
+actual controller deadlines are included in every task's report; the session's start
+record and manifest also record the slow-profile selection. `--slow-local` requires
+`--ollama-model` and cannot be used for smoke mode. The lower-level
+`investigation_tasks` CLI accepts the same option.
+
+If the slower run also times out, inspect its task journals before changing other
+limits. More time does not repair an invalid decision, repeated read or unsupported
+citation. Do not overwrite the original run or infer model accuracy from completion.

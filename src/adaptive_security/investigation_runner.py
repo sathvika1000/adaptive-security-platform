@@ -55,8 +55,8 @@ class RunBudget(StrictModel):
     max_steps: int = Field(default=8, ge=1, le=20)
     max_tool_calls: int = Field(default=5, ge=1, le=10)
     max_evidence_bytes: int = Field(default=128 * 1024, ge=1024, le=256 * 1024)
-    total_seconds: float = Field(default=30.0, gt=0, le=120)
-    operation_seconds: float = Field(default=5.0, gt=0, le=30)
+    total_seconds: float = Field(default=30.0, gt=0, le=360)
+    operation_seconds: float = Field(default=5.0, gt=0, le=120)
 
 
 class AdapterUsage(StrictModel):

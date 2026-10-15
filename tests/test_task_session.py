@@ -102,3 +102,26 @@ def test_model_validation_before_output(tmp_path):
     with pytest.raises(ValueError):
         asyncio.run(task_session.create_session(directory, "remote/cloud"))
     assert not directory.exists()
+
+
+def test_slow_profile_requires_model_before_creating_directory(tmp_path):
+    directory = tmp_path / "session"
+    with pytest.raises(ValueError, match="requires"):
+        asyncio.run(task_session.create_session(directory, slow_local=True))
+    assert not directory.exists()
+
+
+def test_slow_cli_forwards_profile(tmp_path, monkeypatch):
+    calls = []
+
+    async def recording(directory, model, *, slow_local):
+        calls.append((directory, model, slow_local))
+        return True
+
+    directory = tmp_path / "session"
+    monkeypatch.setattr(task_session, "create_session", recording)
+    monkeypatch.setattr(
+        "sys.argv", ["session", str(directory), "--ollama-model", "gemma3:4b", "--slow-local"]
+    )
+    assert task_session.main() == 0
+    assert calls == [(directory, "gemma3:4b", True)]

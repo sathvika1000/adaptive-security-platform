@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import math
 import re
 from typing import Annotated
 
@@ -69,6 +70,8 @@ class OllamaAdapter:
         model: str,
         token_limit: int = 36_864,
         transport: httpx2.AsyncBaseTransport | None = None,
+        *,
+        request_timeout_seconds: float = 25.0,
     ) -> None:
         if (
             not re.fullmatch(r"[a-z0-9][a-z0-9._:-]{0,47}", model)
@@ -78,6 +81,14 @@ class OllamaAdapter:
             or not CALL_RESERVATION <= token_limit <= 73_728
         ):
             raise ValueError("Invalid local model name or token limit")
+        if (
+            isinstance(request_timeout_seconds, bool)
+            or not isinstance(request_timeout_seconds, (int, float))
+            or not math.isfinite(request_timeout_seconds)
+            or not 0 < request_timeout_seconds <= 90
+        ):
+            raise ValueError("Local request timeout must be finite and at most 90 seconds")
+        self.request_timeout_seconds = request_timeout_seconds
         self.model = model
         self.transport = transport
         self.stats = AdapterUsage(
@@ -150,7 +161,10 @@ class OllamaAdapter:
             "options": {"temperature": 0, "num_ctx": CONTEXT_TOKENS, "num_predict": OUTPUT_TOKENS},
         }
         async with httpx2.AsyncClient(
-            trust_env=False, follow_redirects=False, timeout=25, transport=self.transport
+            trust_env=False,
+            follow_redirects=False,
+            timeout=self.request_timeout_seconds,
+            transport=self.transport,
         ) as client:
             info = await self._post(
                 client, "/api/show", {"model": self.model, "verbose": False}, 128 * 1024

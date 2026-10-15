@@ -354,3 +354,27 @@ def test_opt_in_launcher_selects_model_adapter_over_real_stdio(mcp_fixture, monk
 def test_bad_operator_settings_are_rejected(model, limit):
     with pytest.raises(ValueError):
         OllamaAdapter(model, limit)
+
+
+@pytest.mark.parametrize("timeout", [0, -1, 91, float("inf"), float("nan"), True, "85"])
+def test_local_timeout_configuration_is_bounded(timeout):
+    with pytest.raises(ValueError):
+        OllamaAdapter("gemma3:4b", request_timeout_seconds=timeout)
+
+
+def test_slow_http_timeout_reaches_client_without_changing_token_options():
+    def handler(request):
+        assert request.extensions["timeout"]["read"] == 85.0
+        if request.url.path == "/api/show":
+            return wire(LOCAL_INFO)
+        body = json.loads(request.content)
+        assert body["options"]["num_predict"] == 512
+        assert body["options"]["num_ctx"] == 4096
+        return wire(reply(FINISH))
+
+    adapter = OllamaAdapter(
+        "gemma3:4b", transport=httpx2.MockTransport(handler), request_timeout_seconds=85.0
+    )
+    assert asyncio.run(adapter.next_step("{}")) == {
+        **FINISH, "observations": [], "hypotheses": [],
+    }

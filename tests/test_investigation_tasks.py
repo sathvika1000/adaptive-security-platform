@@ -149,3 +149,28 @@ def test_cli_requires_mode_and_private_no_overwrite(tmp_path, monkeypatch):
         assert path.stat().st_mode & 0o777 == 0o600
     assert tasks.main() == 2
     assert path.read_bytes() == body
+
+
+def test_slow_profile_uses_bounded_controller_and_provider_deadlines(monkeypatch):
+    pytest.importorskip("mcp")
+    from adaptive_security import ollama_adapter
+
+    configurations = []
+
+    class FakeLocal:
+        def __init__(self, model, token_limit, *, request_timeout_seconds):
+            configurations.append((model, token_limit, request_timeout_seconds))
+
+        async def next_step(self, context_json):
+            return {"kind": "finish", "disposition": "inconclusive"}
+
+    monkeypatch.setattr(ollama_adapter, "OllamaAdapter", FakeLocal)
+    report = asyncio.run(tasks.run_tasks(load(), "gemma3:4b", slow_local=True))
+    assert configurations == [("gemma3:4b", 13824, 85.0)] * 3
+    for row in report["tasks"]:
+        budget = row["run"]["budget"]
+        assert budget["operation_seconds"] == 90.0
+        assert budget["total_seconds"] == 270.0
+        assert budget["max_steps"] == 3 and budget["max_tool_calls"] == 2
+    with pytest.raises(ValueError):
+        asyncio.run(tasks.run_tasks(load(), slow_local=True))
