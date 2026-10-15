@@ -28,6 +28,7 @@ class TaskChecks(StrictModel):
     required_observations_cited: int = Field(ge=0, le=10)
     disposition_matches: bool
     semantic_review: Literal["pending-human-review"]
+    answer_structure: dict[str, bool] = Field(default_factory=dict)
 
 
 class TaskRun(StrictModel):

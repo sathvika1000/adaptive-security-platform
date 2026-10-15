@@ -89,7 +89,7 @@ def test_cli_exit_codes(tmp_path, monkeypatch):
     assert task_session.main() == 0
     assert task_session.main() == 2
 
-    async def incomplete(*args):
+    async def incomplete(*args, **kwargs):
         return False
 
     monkeypatch.setattr(task_session, "create_session", incomplete)
@@ -114,8 +114,8 @@ def test_slow_profile_requires_model_before_creating_directory(tmp_path):
 def test_slow_cli_forwards_profile(tmp_path, monkeypatch):
     calls = []
 
-    async def recording(directory, model, *, slow_local):
-        calls.append((directory, model, slow_local))
+    async def recording(directory, model, *, slow_local, suite_version):
+        calls.append((directory, model, slow_local, suite_version))
         return True
 
     directory = tmp_path / "session"
@@ -124,4 +124,4 @@ def test_slow_cli_forwards_profile(tmp_path, monkeypatch):
         "sys.argv", ["session", str(directory), "--ollama-model", "gemma3:4b", "--slow-local"]
     )
     assert task_session.main() == 0
-    assert calls == [(directory, "gemma3:4b", True)]
+    assert calls == [(directory, "gemma3:4b", True, "baseline")]

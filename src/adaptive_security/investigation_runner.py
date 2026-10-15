@@ -32,11 +32,17 @@ class ObservationClaim(StrictModel):
     value: str = Field(min_length=1, max_length=512)
 
 
+BoundedExplanation = Annotated[str, Field(min_length=1, max_length=512)]
+
+
 class Conclusion(StrictModel):
     kind: Literal["finish"]
     disposition: Literal["inconclusive", "needs_review"]
     observations: list[ObservationClaim] = Field(default_factory=list, max_length=20)
     hypotheses: list[str] = Field(default_factory=list, max_length=5)
+    alternative_explanations: list[BoundedExplanation] = Field(default_factory=list, max_length=3)
+    collection_limits: list[BoundedExplanation] = Field(default_factory=list, max_length=3)
+    next_checks: list[BoundedExplanation] = Field(default_factory=list, max_length=3)
 
 
 Decision = Annotated[ToolStep | Conclusion, Field(discriminator="kind")]

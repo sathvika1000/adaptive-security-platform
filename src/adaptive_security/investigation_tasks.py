@@ -174,6 +174,15 @@ async def run_tasks(
                     "disposition_matches": actual is not None
                     and actual.disposition == task.rubric.disposition,
                     "semantic_review": "pending-human-review",
+                    "answer_structure": {
+                        field: actual is not None
+                        and any(text.strip() for text in getattr(actual, field))
+                        for field in (
+                            "alternative_explanations",
+                            "collection_limits",
+                            "next_checks",
+                        )
+                    },
                 },
             }
         )

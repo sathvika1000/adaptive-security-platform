@@ -183,3 +183,6 @@ choices under the new schema. Mocked responses verify integration, not real-mode
 improvement. Actual Mac results must still be collected and hypotheses reviewed for
 unsupported false-positive claims, attack attribution and instructions followed from
 untrusted event text. A well-formed citation does not settle those semantic questions.
+
+For explicit alternative explanations, collection limitations, proposed evidence checks
+and the opt-in five-task development suite, see [answer-quality development](ANSWER_QUALITY_DEVELOPMENT.md).
