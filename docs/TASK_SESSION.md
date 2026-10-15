@@ -142,3 +142,44 @@ Proposal text and comparison values can still contain sensitive or malicious str
 keep diagnostic output private and treat it as data. This change adds observability,
 not a prompt correction or model-quality improvement. Token, tool, deadline and citation
 acceptance policies are unchanged.
+
+## Grounded provider response choices
+
+The local Ollama adapter now builds its response schema from controller-returned records
+and page metadata on every decision. It does not read objectives' expected answers,
+rubric labels or review notes. The provider schema offers:
+
+- Only allowed tools and their next unread page offset. An exhausted tool result is no
+  longer a read choice, even if the model changes its requested page size.
+- Only exact observation tuples drawn from returned records: source, event ID, field and
+  value must belong to the same observed claim. Empty evidence allows no citations.
+- An inconclusive disposition when results contain no citable observations.
+
+These constraints guide structured generation rather than repairing the model's output.
+The adapter still parses the strict decision model, and the independent controller still
+checks grants, scopes, citations and all budgets. A provider that ignores its requested
+schema can therefore still be blocked by the controller. There are no automatic retries,
+automatic claim substitutions or task-label shortcuts.
+
+The generated schema has a 12 KiB ceiling; exceeding it stops the run with an explicit
+budget reason instead of silently dropping citation choices. Claims outside the existing
+field/source/event/value length constraints are not offered. Large evidence sets may
+need smaller pages or a separate context-selection design. The schema is sent in the
+Ollama format argument without also duplicating it in the system prompt. Source hashes
+in new reports include the schema-builder module.
+
+For comparison with the preserved earlier sessions, run a fresh session on the grounded
+schema branch, then inspect it:
+
+```bash
+python -m adaptive_security.task_session \
+  artifacts/gemma3-session-grounded-v1 --ollama-model gemma3:4b --slow-local
+python -m adaptive_security.task_diagnostics artifacts/gemma3-session-grounded-v1
+```
+
+This changes provider guidance and structured generation. Schema tests reproduce the
+observed repeated-read, invented-empty-event and wrong-source errors and reject those
+choices under the new schema. Mocked responses verify integration, not real-model
+improvement. Actual Mac results must still be collected and hypotheses reviewed for
+unsupported false-positive claims, attack attribution and instructions followed from
+untrusted event text. A well-formed citation does not settle those semantic questions.

@@ -9,6 +9,7 @@ from typing import Annotated
 import httpx2
 from pydantic import BaseModel, ConfigDict, Field
 
+from adaptive_security.grounded_schema import grounded_schema
 from adaptive_security.investigation_runner import (
     AdapterUsage,
     Conclusion,
@@ -57,6 +58,9 @@ _SYSTEM = (
     "the controller context. Request small pages (limit 5 or less). Read finding evidence first, "
     "then related events or coverage if useful. Finish once supported observations can be cited, "
     "or remain inconclusive when evidence is insufficient. Do not repeat the same page. "
+    "The response schema limits reads to unread pages and citations to exact returned values. "
+    "When no tools remain, finish. If returned events are empty, observations must be []. "
+    "Never substitute a finding ID or event ID for a record source; copy its source field. "
     "Observations cite exact source/event_id/field/value from returned records; event_time uses "
     "the exact normalized string shown. Disposition can only be needs_review or inconclusive. "
     "Keep hypotheses short and explicitly uncertain. Never infer benign behavior from empty data. "
@@ -148,14 +152,14 @@ class OllamaAdapter:
             raise RunStopped("budget_exhausted", "Local model context exceeds 16 KiB")
         if self.stats.charged_tokens + CALL_RESERVATION > self.stats.token_limit:
             raise RunStopped("budget_exhausted", "Model token reservation budget exhausted")
-        schema = ModelDecision.model_json_schema()
+        schema = grounded_schema(ModelDecision.model_json_schema(), context_json)
         payload = {
             "model": self.model,
             "stream": False,
             "format": schema,
             "keep_alive": "5m",
             "messages": [
-                {"role": "system", "content": _SYSTEM + "JSON schema: " + json.dumps(schema)},
+                {"role": "system", "content": _SYSTEM},
                 {"role": "user", "content": context_json},
             ],
             "options": {"temperature": 0, "num_ctx": CONTEXT_TOKENS, "num_predict": OUTPUT_TOKENS},

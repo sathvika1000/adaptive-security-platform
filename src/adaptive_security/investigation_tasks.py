@@ -191,6 +191,7 @@ async def run_tasks(
                 "investigation_tasks.py",
                 "investigation_runner.py",
                 "ollama_adapter.py",
+                "grounded_schema.py",
                 "investigation_tools.py",
             )
         },
