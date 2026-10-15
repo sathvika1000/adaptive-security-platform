@@ -1,7 +1,7 @@
 # Evidence-grounded security investigation
 
-Status: offline tools, read-only identities, local MCP and a bounded controller demo implemented;
-live model reasoning, remote MCP authentication and live source connectors are not implemented.
+Status: offline tools, read-only identities, local MCP, bounded controller and opt-in local Ollama
+adapter implemented. Real-model reasoning evaluation, remote MCP auth and live sources remain pending.
 Reference review: 2026-10-10. Implementation update: 2026-10-14.
 
 ## Product goal and first use case
@@ -171,9 +171,11 @@ rate/concurrency controls and execution time budgets.
 
 The [controller foundation](INVESTIGATION_RUNNER.md) now fixes scope, bounds tool calls/bytes/
 cooperative deadlines, checks exact observed-field citations and saves private journals. Its
-deterministic adapter verifies plumbing; live model reasoning is not connected yet.
+deterministic adapter verifies plumbing. An opt-in [Ollama adapter](OLLAMA_INVESTIGATION.md) now
+requests local model decisions with structured output and conservative token accounting; only
+controlled provider responses have been tested so far, not real model reasoning quality.
 
-Add one replaceable model adapter to this controller. The controller sets allowed
+Evaluate the opt-in local model adapter under this controller. The controller sets allowed
 tools and scope; caps steps, tool calls, wall time, response bytes and model token/cost budget;
 and records an execution journal. The model proposes hypotheses and citations. A separate
 validator checks every cited source/event against returned evidence and requires unsupported

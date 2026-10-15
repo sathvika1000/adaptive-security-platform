@@ -240,3 +240,11 @@ values, and saves private non-overwriting execution journals with response hashe
 adapter and real MCP CLI verify the workflow without model API calls, score/label changes or
 platform writes. INVESTIGATION_RUNNER.md documents the narrow citation guarantee and remaining
 live model, provider token/cost, hard isolation, independent evaluation and durable audit gates.
+
+The opt-in Ollama adapter now connects the runner to a fixed loopback chat endpoint with JSON
+schema output, local-model metadata checks and no proxy/redirect forwarding. It reserves bounded
+tokens before generation, retains uncertain charges after failures/cancellation, and journals
+provider usage. Controller scope/citations remain independent of model output. Tests use mocked
+provider responses through actual MCP; real-model behavior on the Mac is not yet measured.
+OLLAMA_INVESTIGATION.md covers local-only daemon setup and the first user-run command. Independent
+reasoning evaluation, model provenance, hard isolation and production pilot gates remain open.

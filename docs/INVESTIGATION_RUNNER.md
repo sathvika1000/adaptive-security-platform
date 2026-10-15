@@ -1,9 +1,9 @@
 # Bounded investigation controller
 
-The controller foundation runs a read-only investigation through the local MCP boundary, checks
-exact observation citations and saves a private execution journal. It includes a deterministic
-review adapter to verify the workflow. No language model is connected in this slice; this is
-not an evaluation of autonomous reasoning or detection accuracy.
+The controller runs a read-only investigation through local MCP, checks exact observation
+citations and saves a private journal. Deterministic mode remains the default. An optional
+[local Ollama model adapter](OLLAMA_INVESTIGATION.md) is now available; real-model reasoning
+quality and detection accuracy have not been evaluated by these integration checks.
 
 ## Try the deterministic workflow on a Mac
 
@@ -67,8 +67,9 @@ context is derived only from accepted bounded results plus small controller meta
 
 Async cancellation requires a cooperative adapter; arbitrary Python adapters are trusted code,
 not sandboxed plugins. Blocking CPU work or an adapter that ignores cancellation requires process
-isolation to enforce hard deadlines. The demo uses no model tokens or billed API calls. A live
-model adapter must add provider token/output limits and usage/cost accounting before release.
+isolation to enforce hard deadlines. The default demo uses no model tokens or billed API calls.
+Ollama mode applies its separate generation, token and deadline limits and journals usage;
+additional hosted adapters require their own quotas, privacy controls and cost accounting.
 
 The versioned journal includes run ID, adapter name, configured budgets, scope, status,
 step/call/byte counts, accepted requests and projected responses, and a reviewed proposal only
@@ -88,6 +89,7 @@ scope/action/classification escalation, immutable context, untrusted hypotheses,
 budgets, cooperative deadlines, inconsistent responses, stable source binding, journal permissions
 and hashes, overwrite rejection and a real MCP CLI execution without credential disclosure.
 
-Next connect an opt-in local model adapter, keep controller policy outside its prompts, add
-provider output/token accounting, and evaluate adversarial/contradictory/missing-data cases.
-The deterministic adapter currently verifies plumbing and constraints, not model reliability.
+The opt-in local Ollama adapter now requests structured decisions with bounded context/output
+and conservative token reservations. Its usage is captured even on stopped runs. Next evaluate
+real local model runs against adversarial/contradictory/missing-data cases. Deterministic and
+controlled-response integration tests verify constraints, not real-model reliability.
