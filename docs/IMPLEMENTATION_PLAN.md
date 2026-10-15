@@ -233,3 +233,10 @@ incoming frames, argument/result bytes and tool-call attempts, and returns metad
 and logs. Protocol integration tests include an actual stdio child and the Mac smoke command.
 MCP_STDIO.md documents scope semantics and local trust. Remote authentication, hard execution
 deadlines, tenant isolation and controlled model reasoning remain future gates.
+
+The investigation controller foundation now fixes scope outside replaceable adapter decisions,
+bounds decisions/tools/bytes/cooperative deadlines, validates exact observation references and
+values, and saves private non-overwriting execution journals with response hashes. A deterministic
+adapter and real MCP CLI verify the workflow without model API calls, score/label changes or
+platform writes. INVESTIGATION_RUNNER.md documents the narrow citation guarantee and remaining
+live model, provider token/cost, hard isolation, independent evaluation and durable audit gates.
