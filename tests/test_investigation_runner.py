@@ -256,3 +256,64 @@ def test_controller_extended_deadlines_remain_finite_and_bounded():
     ):
         with pytest.raises(ValidationError):
             RunBudget(**options)
+
+
+@pytest.mark.parametrize(
+    "event_id,value,reason,observed",
+    [
+        ("invented", "authentication", "event_not_returned", None),
+        ("event-000", "invented", "field_value_mismatch", "authentication"),
+    ],
+)
+def test_rejected_proposal_and_comparison_are_preserved(
+    runner_fixture, event_id, value, reason, observed
+):
+    grant, channel, _ = runner_fixture
+    proposal = {
+        "kind": "finish",
+        "disposition": "needs_review",
+        "observations": [
+            {"source": "evtx", "event_id": event_id, "field": "category", "value": value},
+        ],
+    }
+    adapter = ScriptedAdapter(
+        {"kind": "tool", "tool": "get_finding_evidence", "limit": 1}, proposal
+    )
+    report = asyncio.run(InvestigationRunner(grant, channel, adapter).run())
+    assert report.status == "blocked" and report.conclusion is None
+    assert len(report.proposals) == 2
+    assert report.proposals[-1]["decision"]["observations"] == proposal["observations"]
+    comparison = next(entry for entry in report.journal if entry["kind"] == "citation_rejected")
+    assert comparison["reason"] == reason
+    assert comparison["observed_value"] == observed
+    assert report.proposals[-1]["data_trust"] == "untrusted_adapter_proposal"
+
+
+def test_excess_tool_proposal_is_retained_without_executing_it(runner_fixture):
+    grant, channel, _ = runner_fixture
+    decision = {"kind": "tool", "tool": "get_finding_evidence", "limit": 1}
+    report = asyncio.run(
+        InvestigationRunner(
+            grant,
+            channel,
+            ScriptedAdapter(decision, decision),
+            budget=RunBudget(max_tool_calls=1),
+        ).run()
+    )
+    assert report.status == "budget_exhausted"
+    assert len(channel.requests) == 1 and len(report.proposals) == 2
+
+
+@pytest.mark.parametrize(
+    "decision",
+    [
+        {"kind": "execute", "command": "private-invalid-output"},
+        {"kind": "finish", "disposition": "inconclusive", "hypotheses": ["x" * 9000]},
+    ],
+)
+def test_invalid_or_oversized_raw_proposals_are_not_saved(runner_fixture, decision):
+    grant, channel, _ = runner_fixture
+    report = asyncio.run(InvestigationRunner(grant, channel, ScriptedAdapter(decision)).run())
+    assert report.status in {"blocked", "budget_exhausted"}
+    assert report.proposals == [] and channel.requests == []
+    assert "private-invalid-output" not in report.model_dump_json()
