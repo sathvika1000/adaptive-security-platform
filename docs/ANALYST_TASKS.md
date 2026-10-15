@@ -79,3 +79,6 @@ suite measures detector precision/recall or exercises live MCP/SIEM/EDR systems.
 
 Use [the task review workflow](TASK_REVIEW.md) to create a separate content-bound
 human assessment, record rationale and summarize explicit ratings without changing the run.
+
+For automatic input pinning, result collection and blank review creation, use the
+[single-command task session](TASK_SESSION.md).

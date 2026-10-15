@@ -1,0 +1,116 @@
+"""Run bundled draft analyst tasks and prepare a private human-review session."""
+
+import argparse
+import asyncio
+import hashlib
+import os
+from importlib.resources import files
+from pathlib import Path
+
+from adaptive_security.investigation_tasks import TaskSuite, run_tasks
+from adaptive_security.task_review import TaskReport, prepare, write_private
+
+SUITE_SHA256 = "0d7d919ead8f04304204fa3e4fd821b2afb3cd19a767f6d1a6f8ad98a003ad12"
+
+
+def bundled_suite() -> bytes:
+    raw = files("adaptive_security").joinpath("fixtures", "analyst-tasks.json").read_bytes()
+    if hashlib.sha256(raw).hexdigest() != SUITE_SHA256:
+        raise ValueError("Bundled suite digest mismatch")
+    return raw
+
+
+async def create_session(directory: Path, model: str | None = None) -> bool:
+    raw = bundled_suite()
+    suite = TaskSuite.model_validate_json(raw)
+    if model is not None:
+        from adaptive_security.ollama_adapter import OllamaAdapter
+
+        OllamaAdapter(
+            model, token_limit=13_824
+        )  # Validate before creating output or calling provider.
+    # Reserving the directory rejects reruns, existing files and symlinks before inference.
+    directory.mkdir(parents=True, exist_ok=False, mode=0o700)
+    write_private(
+        directory / "started.json",
+        {
+            "schema_version": 1,
+            "suite_sha256": SUITE_SHA256,
+            "mode": "deterministic-smoke" if model is None else "local-model",
+            "model": model,
+            "state": "started-not-complete",
+        },
+    )
+    try:
+        # Preserve the exact frozen input with the run, without requiring a repository checkout.
+        descriptor = os.open(directory / "suite.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(raw)
+        report = await run_tasks(suite, model)
+        report["suite_file_sha256"] = SUITE_SHA256
+        parsed = TaskReport.model_validate(report)
+        write_private(directory / "report.json", report)
+        report_digest = hashlib.sha256((directory / "report.json").read_bytes()).hexdigest()
+        review = prepare(parsed, report_digest)
+        write_private(directory / "review.json", review.model_dump())
+        completed = all(task.run.status == "completed" for task in parsed.tasks)
+        artifacts = {
+            name: hashlib.sha256((directory / name).read_bytes()).hexdigest()
+            for name in ("suite.json", "report.json", "review.json", "started.json")
+        }
+        write_private(
+            directory / "manifest.json",
+            {
+                "schema_version": 1,
+                "state": "run-finished-review-pending",
+                "all_runs_completed": completed,
+                "mode": parsed.mode,
+                "model": model,
+                "bundled_suite_sha256": SUITE_SHA256,
+                "artifact_sha256": artifacts,
+                "run_summary": report["summary"],
+                "limitations": [
+                    "Run completion is not a model quality pass; human review remains pending.",
+                    "Draft synthetic tasks do not establish held-out or production performance.",
+                    "Review digest identifies the blank sheet; hash edited reviews separately.",
+                    "Hashes identify bytes, not trusted provenance or authenticated authorship.",
+                ],
+            },
+        )
+        return completed
+    except (OSError, ValueError, RuntimeError, ImportError):
+        write_private(
+            directory / "failure.json",
+            {
+                "schema_version": 1,
+                "state": "session-incomplete",
+                "detail": "Session failed; partial files retained. Retry in a new directory.",
+            },
+        )
+        raise
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("directory", type=Path)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--ollama-model")
+    mode.add_argument("--smoke", action="store_true")
+    args = parser.parse_args()
+    try:
+        completed = asyncio.run(create_session(args.directory, args.ollama_model))
+    except (OSError, ValueError, RuntimeError, ImportError):
+        print(
+            "Session failed; check dependencies and use a new directory. Partial files may remain."
+        )
+        return 2
+    print("Session saved. Read report.json, then fill review.json using docs/TASK_REVIEW.md.")
+    if not completed:
+        print("Some runs did not complete. Inspect task statuses and model usage in report.json.")
+        return 1
+    print("All runs completed; model quality still requires human review.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
