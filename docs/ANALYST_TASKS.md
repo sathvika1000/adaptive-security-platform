@@ -76,3 +76,6 @@ output-write failures exit 2. Inspect per-task statuses for blocked, timeout, ex
 or failed runs; these remain in the report and denominator. The controller replay suite
 in `REASONING_EVALUATION.md` remains a separate enforcement regression check. Neither
 suite measures detector precision/recall or exercises live MCP/SIEM/EDR systems.
+
+Use [the task review workflow](TASK_REVIEW.md) to create a separate content-bound
+human assessment, record rationale and summarize explicit ratings without changing the run.
