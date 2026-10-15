@@ -154,6 +154,7 @@ async def run_tasks(
                 operation_seconds=90.0 if slow_local else 30.0,
             ),
             adapter_name="deterministic-task-smoke" if model is None else "ollama-local-task",
+            required_tools=("get_finding_evidence",),
         ).run()
         actual = report.conclusion
         observed = (

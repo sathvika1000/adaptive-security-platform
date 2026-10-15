@@ -90,3 +90,45 @@ it does not supply the new explanations or measure model quality. Review actual 
 outputs in new review sheets, recording whether collection limits are specific, alternatives
 are defensible, and proposed checks would resolve the stated uncertainty. Preserve the
 original assisted review as its own baseline, not an independent validation result.
+
+## Required read before a task conclusion
+
+The first answer-context Mac run regressed: all three tasks finished at step one with
+zero tool calls, then described unqueried evidence as if it were empty. Filled explanatory
+fields did not make those answers evidence-based. Preserve that session as a regression
+record; its previous `completed` statuses do not establish an evidence review.
+
+Task evaluation now configures a controller-owned required `get_finding_evidence` read.
+The provider context identifies remaining required reads and its generated schema offers
+no finish choice until that read has been accepted. Independently, the controller blocks
+a conclusion with `Required evidence read not completed` if a provider ignores the schema.
+The model cannot satisfy this requirement by writing explanatory text or by claiming
+that a read occurred. Scope, shape and evidence-size checks must accept the actual response.
+
+A valid empty page satisfies the read requirement. A source not yet queried does not.
+A rejected or failed response does not. The policy requires a validated read, not proof
+of complete collection; page limits, missing sources and absent authorization context
+remain review concerns. Existing tool-call, time, token and evidence budgets are unchanged.
+
+Reports record `required_tools`, and the diagnostic command shows that policy. Older
+reports load with no required tools; this does not retroactively reclassify old runs.
+The general controller can still be configured without required tools for workflows
+that explicitly permit abstention without collection. All bundled analyst-task runs
+configure the read requirement, including smoke and expanded-suite runs.
+
+To verify the correction on the same three baseline cases, use the new branch and folder:
+
+```bash
+git fetch origin
+git switch investigation/require-task-evidence-read
+source .venv/bin/activate
+python -m adaptive_security.task_session \
+  artifacts/gemma3-required-read-baseline-v1 --ollama-model gemma3:4b --slow-local
+python -m adaptive_security.task_diagnostics artifacts/gemma3-required-read-baseline-v1
+```
+
+Assess whether the run actually reads evidence before accepting a conclusion, and then
+review citation relevance and explanation quality. Enforcing a read does not prove the
+answer's hypotheses or collection limitations are correct. The earlier assisted review
+and draft expectations remain unchanged; no real-model improvement is claimed by the
+new controller and schema regression tests.
