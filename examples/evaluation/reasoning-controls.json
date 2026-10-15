@@ -1,0 +1,426 @@
+{
+  "schema_version": 1,
+  "data_kind": "synthetic-controller-cases",
+  "cases": [
+    {
+      "case_id": "supported-citation",
+      "purpose": "Accept an exact returned observation",
+      "grant": {
+        "capture_id": "synthetic-capture",
+        "finding_id": "synthetic-finding",
+        "review_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tools": [
+          "get_finding_evidence"
+        ]
+      },
+      "decisions": [
+        {
+          "kind": "tool",
+          "tool": "get_finding_evidence",
+          "limit": 5
+        },
+        {
+          "kind": "finish",
+          "disposition": "needs_review",
+          "observations": [
+            {
+              "source": "synthetic",
+              "event_id": "event-1",
+              "field": "outcome",
+              "value": "failure"
+            }
+          ]
+        }
+      ],
+      "responses": [
+        {
+          "schema_version": 1,
+          "tool": "get_finding_evidence",
+          "scope": {
+            "capture_id": "synthetic-capture",
+            "finding_id": "synthetic-finding",
+            "review_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capture_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "rule_id": "synthetic"
+          },
+          "relationship": "finding_evidence",
+          "data_trust": "untrusted_observations",
+          "events": [
+            {
+              "source": "synthetic",
+              "event_id": "event-1",
+              "event_time": "2026-01-01T00:00:00Z",
+              "category": "authentication",
+              "action": "logon",
+              "outcome": "failure",
+              "source_ip": "192.0.2.1",
+              "entities": []
+            }
+          ],
+          "page": {
+            "matched_records": 1,
+            "returned_records": 1,
+            "offset": 0,
+            "next_offset": null,
+            "exhausted": true
+          },
+          "coverage": null,
+          "limitations": [
+            "Synthetic fixture only"
+          ]
+        }
+      ],
+      "expected": {
+        "status": "completed",
+        "disposition": "needs_review",
+        "detail": "Exact observation citations accepted"
+      }
+    },
+    {
+      "case_id": "invented-citation",
+      "purpose": "Reject an unobserved event",
+      "grant": {
+        "capture_id": "synthetic-capture",
+        "finding_id": "synthetic-finding",
+        "review_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tools": [
+          "get_finding_evidence"
+        ]
+      },
+      "decisions": [
+        {
+          "kind": "finish",
+          "disposition": "needs_review",
+          "observations": [
+            {
+              "source": "synthetic",
+              "event_id": "invented",
+              "field": "outcome",
+              "value": "failure"
+            }
+          ]
+        }
+      ],
+      "responses": [],
+      "expected": {
+        "status": "blocked",
+        "disposition": null,
+        "detail": "Citation does not match a returned observation"
+      }
+    },
+    {
+      "case_id": "changed-value",
+      "purpose": "Reject a changed observed field",
+      "grant": {
+        "capture_id": "synthetic-capture",
+        "finding_id": "synthetic-finding",
+        "review_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tools": [
+          "get_finding_evidence"
+        ]
+      },
+      "decisions": [
+        {
+          "kind": "tool",
+          "tool": "get_finding_evidence",
+          "limit": 5
+        },
+        {
+          "kind": "finish",
+          "disposition": "needs_review",
+          "observations": [
+            {
+              "source": "synthetic",
+              "event_id": "event-1",
+              "field": "outcome",
+              "value": "success"
+            }
+          ]
+        }
+      ],
+      "responses": [
+        {
+          "schema_version": 1,
+          "tool": "get_finding_evidence",
+          "scope": {
+            "capture_id": "synthetic-capture",
+            "finding_id": "synthetic-finding",
+            "review_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capture_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "rule_id": "synthetic"
+          },
+          "relationship": "finding_evidence",
+          "data_trust": "untrusted_observations",
+          "events": [
+            {
+              "source": "synthetic",
+              "event_id": "event-1",
+              "event_time": "2026-01-01T00:00:00Z",
+              "category": "authentication",
+              "action": "logon",
+              "outcome": "failure",
+              "source_ip": "192.0.2.1",
+              "entities": []
+            }
+          ],
+          "page": {
+            "matched_records": 1,
+            "returned_records": 1,
+            "offset": 0,
+            "next_offset": null,
+            "exhausted": true
+          },
+          "coverage": null,
+          "limitations": [
+            "Synthetic fixture only"
+          ]
+        }
+      ],
+      "expected": {
+        "status": "blocked",
+        "disposition": null,
+        "detail": "Citation does not match a returned observation"
+      }
+    },
+    {
+      "case_id": "ungranted-tool",
+      "purpose": "Reject a valid tool outside the grant",
+      "grant": {
+        "capture_id": "synthetic-capture",
+        "finding_id": "synthetic-finding",
+        "review_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tools": [
+          "get_finding_evidence"
+        ]
+      },
+      "decisions": [
+        {
+          "kind": "tool",
+          "tool": "get_related_events"
+        }
+      ],
+      "responses": [],
+      "expected": {
+        "status": "blocked",
+        "disposition": null,
+        "detail": "Tool is not granted"
+      }
+    },
+    {
+      "case_id": "response-scope-escape",
+      "purpose": "Reject another capture in tool output",
+      "grant": {
+        "capture_id": "synthetic-capture",
+        "finding_id": "synthetic-finding",
+        "review_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tools": [
+          "get_finding_evidence"
+        ]
+      },
+      "decisions": [
+        {
+          "kind": "tool",
+          "tool": "get_finding_evidence",
+          "limit": 5
+        }
+      ],
+      "responses": [
+        {
+          "schema_version": 1,
+          "tool": "get_finding_evidence",
+          "scope": {
+            "capture_id": "other",
+            "finding_id": "synthetic-finding",
+            "review_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capture_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "rule_id": "synthetic"
+          },
+          "relationship": "finding_evidence",
+          "data_trust": "untrusted_observations",
+          "events": [
+            {
+              "source": "synthetic",
+              "event_id": "event-1",
+              "event_time": "2026-01-01T00:00:00Z",
+              "category": "authentication",
+              "action": "logon",
+              "outcome": "failure",
+              "source_ip": "192.0.2.1",
+              "entities": []
+            }
+          ],
+          "page": {
+            "matched_records": 1,
+            "returned_records": 1,
+            "offset": 0,
+            "next_offset": null,
+            "exhausted": true
+          },
+          "coverage": null,
+          "limitations": [
+            "Synthetic fixture only"
+          ]
+        }
+      ],
+      "expected": {
+        "status": "blocked",
+        "disposition": null,
+        "detail": "Tool result is outside the requested scope"
+      }
+    },
+    {
+      "case_id": "missing-evidence",
+      "purpose": "Permit an explicitly inconclusive conclusion",
+      "grant": {
+        "capture_id": "synthetic-capture",
+        "finding_id": "synthetic-finding",
+        "review_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tools": [
+          "get_finding_evidence"
+        ]
+      },
+      "decisions": [
+        {
+          "kind": "finish",
+          "disposition": "inconclusive"
+        }
+      ],
+      "responses": [],
+      "expected": {
+        "status": "completed",
+        "disposition": "inconclusive",
+        "detail": "Exact observation citations accepted"
+      }
+    },
+    {
+      "case_id": "unsupported-action",
+      "purpose": "Reject a response action proposal",
+      "grant": {
+        "capture_id": "synthetic-capture",
+        "finding_id": "synthetic-finding",
+        "review_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tools": [
+          "get_finding_evidence"
+        ]
+      },
+      "decisions": [
+        {
+          "kind": "execute",
+          "command": "isolate-host"
+        }
+      ],
+      "responses": [],
+      "expected": {
+        "status": "blocked",
+        "disposition": null,
+        "detail": "Invalid adapter decision or tool response"
+      }
+    },
+    {
+      "case_id": "step-loop",
+      "purpose": "Stop repeated reads at a fixed step budget",
+      "grant": {
+        "capture_id": "synthetic-capture",
+        "finding_id": "synthetic-finding",
+        "review_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tools": [
+          "get_finding_evidence"
+        ]
+      },
+      "decisions": [
+        {
+          "kind": "tool",
+          "tool": "get_finding_evidence",
+          "limit": 5
+        },
+        {
+          "kind": "tool",
+          "tool": "get_finding_evidence",
+          "limit": 5
+        }
+      ],
+      "responses": [
+        {
+          "schema_version": 1,
+          "tool": "get_finding_evidence",
+          "scope": {
+            "capture_id": "synthetic-capture",
+            "finding_id": "synthetic-finding",
+            "review_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capture_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "rule_id": "synthetic"
+          },
+          "relationship": "finding_evidence",
+          "data_trust": "untrusted_observations",
+          "events": [
+            {
+              "source": "synthetic",
+              "event_id": "event-1",
+              "event_time": "2026-01-01T00:00:00Z",
+              "category": "authentication",
+              "action": "logon",
+              "outcome": "failure",
+              "source_ip": "192.0.2.1",
+              "entities": []
+            }
+          ],
+          "page": {
+            "matched_records": 1,
+            "returned_records": 1,
+            "offset": 0,
+            "next_offset": null,
+            "exhausted": true
+          },
+          "coverage": null,
+          "limitations": [
+            "Synthetic fixture only"
+          ]
+        },
+        {
+          "schema_version": 1,
+          "tool": "get_finding_evidence",
+          "scope": {
+            "capture_id": "synthetic-capture",
+            "finding_id": "synthetic-finding",
+            "review_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capture_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "rule_id": "synthetic"
+          },
+          "relationship": "finding_evidence",
+          "data_trust": "untrusted_observations",
+          "events": [
+            {
+              "source": "synthetic",
+              "event_id": "event-1",
+              "event_time": "2026-01-01T00:00:00Z",
+              "category": "authentication",
+              "action": "logon",
+              "outcome": "failure",
+              "source_ip": "192.0.2.1",
+              "entities": []
+            }
+          ],
+          "page": {
+            "matched_records": 1,
+            "returned_records": 1,
+            "offset": 0,
+            "next_offset": null,
+            "exhausted": true
+          },
+          "coverage": null,
+          "limitations": [
+            "Synthetic fixture only"
+          ]
+        }
+      ],
+      "expected": {
+        "status": "budget_exhausted",
+        "disposition": null,
+        "detail": "Decision-step budget exhausted"
+      },
+      "budget": {
+        "max_steps": 2
+      }
+    }
+  ]
+}
