@@ -12,10 +12,16 @@ from adaptive_security.task_review import TaskReport, prepare, write_private
 
 SUITE_SHA256 = "0d7d919ead8f04304204fa3e4fd821b2afb3cd19a767f6d1a6f8ad98a003ad12"
 
+EXPANDED_SUITE_SHA256 = "bf1f1ee908e1cac35e775a0317e382ad41d542909b3db44379d6fbfd2ad9337b"
 
-def bundled_suite() -> bytes:
-    raw = files("adaptive_security").joinpath("fixtures", "analyst-tasks.json").read_bytes()
-    if hashlib.sha256(raw).hexdigest() != SUITE_SHA256:
+
+def bundled_suite(version: str = "baseline") -> bytes:
+    if version not in {"baseline", "expanded"}:
+        raise ValueError("Unknown bundled suite version")
+    filename = "analyst-tasks.json" if version == "baseline" else "analyst-tasks-v2.json"
+    expected = SUITE_SHA256 if version == "baseline" else EXPANDED_SUITE_SHA256
+    raw = files("adaptive_security").joinpath("fixtures", filename).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != expected:
         raise ValueError("Bundled suite digest mismatch")
     return raw
 
@@ -25,10 +31,12 @@ async def create_session(
     model: str | None = None,
     *,
     slow_local: bool = False,
+    suite_version: str = "baseline",
 ) -> bool:
     if slow_local and model is None:
         raise ValueError("Slow local profile requires an Ollama model")
-    raw = bundled_suite()
+    raw = bundled_suite(suite_version)
+    suite_digest = hashlib.sha256(raw).hexdigest()
     suite = TaskSuite.model_validate_json(raw)
     if model is not None:
         from adaptive_security.ollama_adapter import OllamaAdapter
@@ -42,10 +50,11 @@ async def create_session(
         directory / "started.json",
         {
             "schema_version": 1,
-            "suite_sha256": SUITE_SHA256,
+            "suite_sha256": suite_digest,
             "mode": "deterministic-smoke" if model is None else "local-model",
             "model": model,
             "slow_local": slow_local,
+            "suite_version": suite_version,
             "state": "started-not-complete",
         },
     )
@@ -59,7 +68,7 @@ async def create_session(
             if slow_local
             else await run_tasks(suite, model)
         )
-        report["suite_file_sha256"] = SUITE_SHA256
+        report["suite_file_sha256"] = suite_digest
         parsed = TaskReport.model_validate(report)
         write_private(directory / "report.json", report)
         report_digest = hashlib.sha256((directory / "report.json").read_bytes()).hexdigest()
@@ -79,7 +88,8 @@ async def create_session(
                 "mode": parsed.mode,
                 "model": model,
                 "slow_local": slow_local,
-                "bundled_suite_sha256": SUITE_SHA256,
+                "suite_version": suite_version,
+                "bundled_suite_sha256": suite_digest,
                 "artifact_sha256": artifacts,
                 "run_summary": report["summary"],
                 "limitations": [
@@ -107,15 +117,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     parser.add_argument("--slow-local", action="store_true")
+    parser.add_argument("--suite-version", choices=("baseline", "expanded"), default="baseline")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--ollama-model")
     mode.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
     try:
         completed = asyncio.run(
-            create_session(args.directory, args.ollama_model, slow_local=True)
-            if args.slow_local
-            else create_session(args.directory, args.ollama_model)
+            create_session(
+                args.directory,
+                args.ollama_model,
+                slow_local=args.slow_local,
+                suite_version=args.suite_version,
+            )
         )
     except (OSError, ValueError, RuntimeError, ImportError):
         print(

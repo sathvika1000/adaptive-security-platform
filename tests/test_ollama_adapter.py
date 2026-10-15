@@ -376,5 +376,10 @@ def test_slow_http_timeout_reaches_client_without_changing_token_options():
         "gemma3:4b", transport=httpx2.MockTransport(handler), request_timeout_seconds=85.0
     )
     assert asyncio.run(adapter.next_step("{}")) == {
-        **FINISH, "observations": [], "hypotheses": [],
+        **FINISH,
+        "observations": [],
+        "hypotheses": [],
+        "alternative_explanations": [],
+        "collection_limits": [],
+        "next_checks": [],
     }

@@ -36,6 +36,11 @@ def finish(claims):
             "disposition": "inconclusive",
             "observations": claims,
             "hypotheses": [],
+            "alternative_explanations": [
+                "A legitimate retry is possible; authorization is unknown."
+            ],
+            "collection_limits": ["Only the returned capture is available."],
+            "next_checks": ["Review account and session context."],
         }
     }
 
@@ -163,3 +168,18 @@ def test_each_task_flows_through_grounded_format_and_controller(task_index):
     assert report.tool_calls == 1
     assert report.conclusion is not None
     assert report.adapter_usage.unconfirmed_requests == 0
+
+
+def test_grounded_finish_requires_explicit_context_and_next_evidence_checks():
+    schema = grounded_schema(ModelDecision.model_json_schema(), json.dumps(context()))
+    good = finish([claim()])
+    jsonschema.validate(good, schema)
+    for field in ("collection_limits", "next_checks", "alternative_explanations"):
+        missing = copy.deepcopy(good)
+        missing["decision"].pop(field)
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(missing, schema)
+        blank = copy.deepcopy(good)
+        blank["decision"][field] = []
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(blank, schema)

@@ -77,7 +77,19 @@ def grounded_schema(base: dict[str, object], context_json: str) -> dict[str, obj
         observations["items"] = {"anyOf": claims}
     else:
         observations["maxItems"] = 0
-    conclusion["required"] = ["kind", "disposition", "observations", "hypotheses"]
+    conclusion["required"] = [
+        "kind",
+        "disposition",
+        "observations",
+        "hypotheses",
+        "alternative_explanations",
+        "collection_limits",
+        "next_checks",
+    ]
+    conclusion["properties"]["collection_limits"]["minItems"] = 1
+    conclusion["properties"]["next_checks"]["minItems"] = 1
+    if claims:
+        conclusion["properties"]["alternative_explanations"]["minItems"] = 1
     if results and not claims:
         conclusion["properties"]["disposition"] = {"type": "string", "const": "inconclusive"}
     choices.append({"$ref": "#/$defs/Conclusion"})
