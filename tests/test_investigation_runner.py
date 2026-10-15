@@ -242,3 +242,17 @@ def test_real_mcp_demo_cli_saves_journal_without_credentials(runner_fixture, tmp
     assert token not in journal.read_text()
     assert token.encode() not in result.stdout + result.stderr
     assert b"do-not-inherit" not in result.stdout + result.stderr
+
+
+def test_controller_extended_deadlines_remain_finite_and_bounded():
+    from pydantic import ValidationError
+
+    assert RunBudget(total_seconds=270.0, operation_seconds=90.0).max_steps == 8
+    for options in (
+        {"total_seconds": 361.0},
+        {"operation_seconds": 121.0},
+        {"total_seconds": float("inf")},
+        {"operation_seconds": float("nan")},
+    ):
+        with pytest.raises(ValidationError):
+            RunBudget(**options)

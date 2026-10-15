@@ -122,7 +122,14 @@ def load_tasks(path: Path, digest: str) -> TaskSuite:
     return TaskSuite.model_validate_json(raw)
 
 
-async def run_tasks(suite: TaskSuite, model: str | None = None) -> dict[str, object]:
+async def run_tasks(
+    suite: TaskSuite,
+    model: str | None = None,
+    *,
+    slow_local: bool = False,
+) -> dict[str, object]:
+    if slow_local and model is None:
+        raise ValueError("Slow local profile requires an Ollama model")
     suite = suite.model_copy(deep=True)
     rows = []
     statuses: Counter[str] = Counter()
@@ -131,13 +138,20 @@ async def run_tasks(suite: TaskSuite, model: str | None = None) -> dict[str, obj
         if model is not None:
             from adaptive_security.ollama_adapter import OllamaAdapter
 
-            adapter = OllamaAdapter(model, token_limit=13_824)
+            adapter = (
+                OllamaAdapter(model, token_limit=13_824, request_timeout_seconds=85.0)
+                if slow_local
+                else OllamaAdapter(model, token_limit=13_824)
+            )
         report = await InvestigationRunner(
             task.grant,
             TaskChannel(task),
             TaskAdapter(adapter, task.objective),
             budget=RunBudget(
-                max_steps=3, max_tool_calls=2, total_seconds=90.0, operation_seconds=30.0
+                max_steps=3,
+                max_tool_calls=2,
+                total_seconds=270.0 if slow_local else 90.0,
+                operation_seconds=90.0 if slow_local else 30.0,
             ),
             adapter_name="deterministic-task-smoke" if model is None else "ollama-local-task",
         ).run()
@@ -198,13 +212,18 @@ def main() -> int:
     parser.add_argument("suite", type=Path)
     parser.add_argument("report", type=Path)
     parser.add_argument("--suite-sha256", required=True)
+    parser.add_argument("--slow-local", action="store_true")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--ollama-model")
     mode.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
     try:
         report = asyncio.run(
-            run_tasks(load_tasks(args.suite, args.suite_sha256), args.ollama_model)
+            run_tasks(
+                load_tasks(args.suite, args.suite_sha256),
+                args.ollama_model,
+                slow_local=args.slow_local,
+            )
         )
         report["suite_file_sha256"] = args.suite_sha256
         args.report.parent.mkdir(parents=True, exist_ok=True)

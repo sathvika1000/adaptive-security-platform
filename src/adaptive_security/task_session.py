@@ -20,7 +20,14 @@ def bundled_suite() -> bytes:
     return raw
 
 
-async def create_session(directory: Path, model: str | None = None) -> bool:
+async def create_session(
+    directory: Path,
+    model: str | None = None,
+    *,
+    slow_local: bool = False,
+) -> bool:
+    if slow_local and model is None:
+        raise ValueError("Slow local profile requires an Ollama model")
     raw = bundled_suite()
     suite = TaskSuite.model_validate_json(raw)
     if model is not None:
@@ -38,6 +45,7 @@ async def create_session(directory: Path, model: str | None = None) -> bool:
             "suite_sha256": SUITE_SHA256,
             "mode": "deterministic-smoke" if model is None else "local-model",
             "model": model,
+            "slow_local": slow_local,
             "state": "started-not-complete",
         },
     )
@@ -46,7 +54,11 @@ async def create_session(directory: Path, model: str | None = None) -> bool:
         descriptor = os.open(directory / "suite.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(raw)
-        report = await run_tasks(suite, model)
+        report = (
+            await run_tasks(suite, model, slow_local=True)
+            if slow_local
+            else await run_tasks(suite, model)
+        )
         report["suite_file_sha256"] = SUITE_SHA256
         parsed = TaskReport.model_validate(report)
         write_private(directory / "report.json", report)
@@ -66,6 +78,7 @@ async def create_session(directory: Path, model: str | None = None) -> bool:
                 "all_runs_completed": completed,
                 "mode": parsed.mode,
                 "model": model,
+                "slow_local": slow_local,
                 "bundled_suite_sha256": SUITE_SHA256,
                 "artifact_sha256": artifacts,
                 "run_summary": report["summary"],
@@ -93,12 +106,17 @@ async def create_session(directory: Path, model: str | None = None) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
+    parser.add_argument("--slow-local", action="store_true")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--ollama-model")
     mode.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
     try:
-        completed = asyncio.run(create_session(args.directory, args.ollama_model))
+        completed = asyncio.run(
+            create_session(args.directory, args.ollama_model, slow_local=True)
+            if args.slow_local
+            else create_session(args.directory, args.ollama_model)
+        )
     except (OSError, ValueError, RuntimeError, ImportError):
         print(
             "Session failed; check dependencies and use a new directory. Partial files may remain."
