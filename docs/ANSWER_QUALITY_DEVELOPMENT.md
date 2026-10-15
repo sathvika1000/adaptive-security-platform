@@ -132,3 +132,8 @@ review citation relevance and explanation quality. Enforcing a read does not pro
 answer's hypotheses or collection limitations are correct. The earlier assisted review
 and draft expectations remain unchanged; no real-model improvement is claimed by the
 new controller and schema regression tests.
+
+For a within-model comparison of fixture-labelled and neutral presentation, use the
+[paired presentation evaluation](PAIRED_PRESENTATION_EVALUATION.md). Both new arms share
+factual collection limitations; preserve earlier runs and avoid treating an old-expanded
+versus neutral comparison as a labels-only experiment.
