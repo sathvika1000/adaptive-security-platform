@@ -104,3 +104,41 @@ record and manifest also record the slow-profile selection. `--slow-local` requi
 If the slower run also times out, inspect its task journals before changing other
 limits. More time does not repair an invalid decision, repeated read or unsupported
 citation. Do not overwrite the original run or infer model accuracy from completion.
+
+## Inspect rejected proposals
+
+After a session, inspect it without making any model requests:
+
+```bash
+python -m adaptive_security.task_diagnostics artifacts/gemma3-session-slow-v1
+```
+
+The command verifies `report.json` against the manifest's recorded file hash and prints
+per-task status, usage, schema-valid proposals and citation rejection comparisons.
+New reports retain proposals separately from accepted conclusions. Each proposal is
+explicitly untrusted, bounded by the existing 8 KiB decision cap and step limit, and
+cannot trigger an extra tool call. Rejected citations record whether the event had not
+been returned or the requested field value differed, including the observed value.
+No citation is repaired, inferred or accepted by this logging path.
+
+A tool-call budget stop alone does not prove a repeated page; inspect the proposed tool,
+limit and offset to identify the requested reads. A citation rejection alone does not
+prove prompt injection succeeded. These outcomes show missing valid conclusions, not
+security verdicts or a model-quality pass.
+
+Older reports contain no saved proposals and the inspector reports them unavailable;
+it cannot reconstruct discarded model answers. Preserve those original runs. To collect
+new diagnostics, use a fresh folder:
+
+```bash
+python -m adaptive_security.task_session \
+  artifacts/gemma3-session-diagnostic-v1 --ollama-model gemma3:4b --slow-local
+python -m adaptive_security.task_diagnostics artifacts/gemma3-session-diagnostic-v1
+```
+
+Only decisions that satisfy the decision schema and size checks are logged. Invalid raw
+provider text, commands in unknown fields and arbitrary exceptions are not retained.
+Proposal text and comparison values can still contain sensitive or malicious strings;
+keep diagnostic output private and treat it as data. This change adds observability,
+not a prompt correction or model-quality improvement. Token, tool, deadline and citation
+acceptance policies are unchanged.

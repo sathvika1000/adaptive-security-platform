@@ -82,6 +82,7 @@ class RunReport(BaseModel):
     tool_calls: int
     evidence_bytes: int
     journal: list[dict[str, object]]
+    proposals: list[dict[str, object]] = Field(default_factory=list)
     conclusion: Conclusion | None = None
     adapter_usage: AdapterUsage | None = None
     limitations: list[str] = Field(
@@ -159,6 +160,13 @@ class InvestigationRunner:
                     if len(canonical(raw)) > 8 * 1024:
                         raise RunStopped("budget_exhausted", "Adapter decision exceeds 8 KiB")
                     decision = _DECISION.validate_python(raw, strict=True)
+                    report.proposals.append(
+                        {
+                            "step": step + 1,
+                            "data_trust": "untrusted_adapter_proposal",
+                            "decision": decision.model_dump(mode="json"),
+                        }
+                    )
                     if isinstance(decision, Conclusion):
                         if any(len(text) > 1024 for text in decision.hypotheses):
                             raise RunStopped("blocked", "Hypothesis exceeds allowed length")
@@ -168,6 +176,19 @@ class InvestigationRunner:
                                 record is None
                                 or record.model_dump(mode="json").get(claim.field) != claim.value
                             ):
+                                report.journal.append(
+                                    {
+                                        "step": step + 1,
+                                        "kind": "citation_rejected",
+                                        "claim": claim.model_dump(mode="json"),
+                                        "reason": "event_not_returned"
+                                        if record is None
+                                        else "field_value_mismatch",
+                                        "observed_value": None
+                                        if record is None
+                                        else record.model_dump(mode="json").get(claim.field),
+                                    }
+                                )
                                 raise RunStopped(
                                     "blocked", "Citation does not match a returned observation"
                                 )
