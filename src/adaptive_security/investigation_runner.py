@@ -59,6 +59,17 @@ class RunBudget(StrictModel):
     operation_seconds: float = Field(default=5.0, gt=0, le=30)
 
 
+class AdapterUsage(StrictModel):
+    model: str = Field(min_length=1, max_length=48)
+    requests: int = Field(ge=0)
+    prompt_tokens: int = Field(ge=0)
+    generated_tokens: int = Field(ge=0)
+    charged_tokens: int = Field(ge=0)
+    token_limit: int = Field(ge=0)
+    unconfirmed_requests: int = Field(ge=0)
+    metadata_sha256: str | None = None
+
+
 class RunReport(BaseModel):
     schema_version: Literal[1] = 1
     run_id: str
@@ -72,6 +83,7 @@ class RunReport(BaseModel):
     evidence_bytes: int
     journal: list[dict[str, object]]
     conclusion: Conclusion | None = None
+    adapter_usage: AdapterUsage | None = None
     limitations: list[str] = Field(
         default_factory=lambda: [
             "Citations check returned observations, not publisher authenticity or attack truth.",
@@ -267,6 +279,17 @@ class InvestigationRunner:
             report.status, report.detail = "blocked", "Invalid adapter decision or tool response"
         except Exception:
             report.status, report.detail = "failed", "Adapter or evidence transport failed"
+        finally:
+            usage = getattr(self.adapter, "usage", None)
+            if callable(usage):
+                try:
+                    report.adapter_usage = AdapterUsage.model_validate(usage()).model_copy(
+                        deep=True
+                    )
+                except Exception:
+                    report.status, report.detail = "failed", "Adapter usage accounting invalid"
+                    report.conclusion = None
+                    report.journal.append({"kind": "stop", "detail": report.detail})
         report.journal.append({"kind": "stop", "status": report.status, "detail": report.detail})
         return report
 

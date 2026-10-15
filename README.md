@@ -460,4 +460,9 @@ No model, HTTP MCP listener or remote authentication is enabled by this transpor
 
 A bounded [investigation controller](docs/INVESTIGATION_RUNNER.md) now drives the local MCP tools,
 checks exact returned-field citations and saves private execution journals. Its deterministic
-demo verifies scope, limits and review proposals; a live model adapter remains the next gate.
+demo verifies scope, limits and review proposals; optional model integration is described below.
+
+An opt-in [local Ollama adapter](docs/OLLAMA_INVESTIGATION.md) now proposes bounded investigation
+steps using structured JSON. It checks local model metadata, preserves controller authorization
+and citations, and journals conservative token accounting. Real-model usefulness and adversarial
+reasoning evaluation remain pending; the deterministic mode is still the default.
