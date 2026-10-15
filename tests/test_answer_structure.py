@@ -48,6 +48,8 @@ def test_explanatory_presence_does_not_claim_semantic_pass(monkeypatch):
         async def next_step(self, context_json):
             context = json.loads(context_json)
             assert "rubric" not in context and "review_notes" not in context
+            if not context["results"]:
+                return {"kind": "tool", "tool": "get_finding_evidence", "limit": 5}
             return {
                 "kind": "finish",
                 "disposition": "inconclusive",

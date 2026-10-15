@@ -183,3 +183,31 @@ def test_grounded_finish_requires_explicit_context_and_next_evidence_checks():
         blank["decision"][field] = []
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(blank, schema)
+
+
+def test_required_read_removes_early_finish_but_completed_empty_read_allows_it():
+    data = context(empty=True)
+    data["results"] = []
+    data["required_tools_remaining"] = ["get_finding_evidence"]
+    schema = grounded_schema(ModelDecision.model_json_schema(), json.dumps(data))
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(finish([]), schema)
+    read = {"decision": {"kind": "tool", "tool": "get_finding_evidence", "limit": 5, "offset": 0}}
+    jsonschema.validate(read, schema)
+    data = context(empty=True)
+    data["required_tools_remaining"] = []
+    schema = grounded_schema(ModelDecision.model_json_schema(), json.dumps(data))
+    jsonschema.validate(finish([]), schema)
+
+
+def test_bad_required_read_metadata_is_rejected():
+    with pytest.raises(ValueError):
+        grounded_schema(
+            ModelDecision.model_json_schema(),
+            json.dumps(
+                {
+                    "allowed_tools": ["get_finding_evidence"],
+                    "required_tools_remaining": ["execute"],
+                }
+            ),
+        )

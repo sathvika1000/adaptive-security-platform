@@ -92,7 +92,15 @@ def grounded_schema(base: dict[str, object], context_json: str) -> dict[str, obj
         conclusion["properties"]["alternative_explanations"]["minItems"] = 1
     if results and not claims:
         conclusion["properties"]["disposition"] = {"type": "string", "const": "inconclusive"}
-    choices.append({"$ref": "#/$defs/Conclusion"})
+    required = context.get("required_tools_remaining", [])
+    if not isinstance(required, list) or not all(
+        isinstance(tool, str) and tool in allowed for tool in required
+    ):
+        raise ValueError("Invalid required-read metadata")
+    if not required:
+        choices.append({"$ref": "#/$defs/Conclusion"})
+    if not choices:
+        raise RunStopped("blocked", "No available decision satisfies required reads")
     properties = schema.get("properties")
     if not isinstance(properties, dict):
         raise ValueError("Expected decision properties")
