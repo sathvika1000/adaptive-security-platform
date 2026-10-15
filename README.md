@@ -457,3 +457,7 @@ An optional local stdio MCP server now wraps these same read-only grants with th
 SDK. It exposes granted tools and scoped discovery, bounds inputs/results/calls, and includes a
 real-process Mac smoke command. See [MCP setup and security boundary](docs/MCP_STDIO.md).
 No model, HTTP MCP listener or remote authentication is enabled by this transport slice.
+
+A bounded [investigation controller](docs/INVESTIGATION_RUNNER.md) now drives the local MCP tools,
+checks exact returned-field citations and saves private execution journals. Its deterministic
+demo verifies scope, limits and review proposals; a live model adapter remains the next gate.

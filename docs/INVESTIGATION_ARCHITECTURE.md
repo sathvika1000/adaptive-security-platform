@@ -1,7 +1,7 @@
 # Evidence-grounded security investigation
 
-Status: offline tools, dedicated read-only identities and local stdio MCP transport implemented;
-model reasoning, remote MCP authentication and live investigation connectors are not implemented.
+Status: offline tools, read-only identities, local MCP and a bounded controller demo implemented;
+live model reasoning, remote MCP authentication and live source connectors are not implemented.
 Reference review: 2026-10-10. Implementation update: 2026-10-14.
 
 ## Product goal and first use case
@@ -169,7 +169,11 @@ rate/concurrency controls and execution time budgets.
 
 ### 2. Bounded single-agent investigation
 
-Add one replaceable model adapter and a deterministic controller. The controller sets allowed
+The [controller foundation](INVESTIGATION_RUNNER.md) now fixes scope, bounds tool calls/bytes/
+cooperative deadlines, checks exact observed-field citations and saves private journals. Its
+deterministic adapter verifies plumbing; live model reasoning is not connected yet.
+
+Add one replaceable model adapter to this controller. The controller sets allowed
 tools and scope; caps steps, tool calls, wall time, response bytes and model token/cost budget;
 and records an execution journal. The model proposes hypotheses and citations. A separate
 validator checks every cited source/event against returned evidence and requires unsupported
