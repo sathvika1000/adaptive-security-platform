@@ -92,6 +92,24 @@ def grounded_schema(base: dict[str, object], context_json: str) -> dict[str, obj
     conclusion["properties"]["next_checks"]["minItems"] = 1
     if context.get("structured_requests") is True:
         request_schema = definitions["EvidenceRequest"]
+        if context.get("linked_tests") is True:
+            request_schema["properties"]["tests"] = {
+                "type": "array",
+                "maxItems": 2,
+                "uniqueItems": True,
+                "items": {"type": "string", "enum": ["hypotheses:0", "alternative_explanations:0"]},
+            }
+            request_schema["required"].append("tests")
+            request_schema["properties"]["evidence_needed"]["maxLength"] = 160
+            for name in ("hypotheses", "alternative_explanations"):
+                conclusion["properties"][name]["maxItems"] = 1
+                conclusion["properties"][name]["items"] = {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160,
+                }
+        else:
+            request_schema["properties"].pop("tests", None)
         if context.get("shared_request_scope") is True:
             request_schema["properties"].pop("scope", None)
             request_schema["properties"]["scope_ref"] = {
@@ -127,7 +145,7 @@ def grounded_schema(base: dict[str, object], context_json: str) -> dict[str, obj
     if context.get("scoped_requests") is not True or context.get("shared_request_scope") is True:
         for name in ("RequestScope", "EventReference", "CollectionInterval"):
             definitions.pop(name, None)
-    if claims:
+    if claims and context.get("linked_tests") is not True:
         conclusion["properties"]["alternative_explanations"]["minItems"] = 1
     if results and not claims:
         conclusion["properties"]["disposition"] = {"type": "string", "const": "inconclusive"}

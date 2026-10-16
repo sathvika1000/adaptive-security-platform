@@ -1,6 +1,6 @@
 """Bounded proposals linked to deterministic gaps; never executable actions."""
 
-from typing import Literal, cast
+from typing import Annotated, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -27,6 +27,9 @@ class EvidenceRequest(BaseModel):
         "authentication_details",
         "session_correlation",
     ]
+    tests: list[
+        Annotated[str, Field(pattern=r"^(hypotheses:[0-4]|alternative_explanations:[0-2])$")]
+    ] = Field(default_factory=list, max_length=2)
     scope: RequestScope | None = None
     scope_ref: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     evidence_needed: str = Field(min_length=8, max_length=256)
@@ -80,4 +83,6 @@ def validate_requests(
 def request_payload(request: EvidenceRequest) -> dict[str, object]:
     # Preserve canonical hashes of requests saved before scope fields existed.
     absent = {name for name in ("scope", "scope_ref") if getattr(request, name) is None}
+    if not request.tests:
+        absent.add("tests")
     return request.model_dump(mode="json", exclude=absent)

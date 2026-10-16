@@ -14,6 +14,7 @@ from adaptive_security.evidence_requests import EvidenceRequest, request_catalog
 from adaptive_security.investigation_access import InvestigationGrant
 from adaptive_security.investigation_tools import EvidenceRecord, ToolName, ToolRequest, ToolResult
 from adaptive_security.request_scope import RequestScope, scope_context, scope_digest
+from adaptive_security.statement_tests import validate_statement_tests
 
 
 class StrictModel(BaseModel):
@@ -92,6 +93,7 @@ class RunReport(BaseModel):
     evidence_bytes: int
     journal: list[dict[str, object]]
     proposals: list[dict[str, object]] = Field(default_factory=list)
+    linked_tests: bool = False
     shared_request_scope: bool = False
     shared_scope: RequestScope | None = None
     scoped_requests: bool = False
@@ -133,14 +135,16 @@ class InvestigationRunner:
         structured_requests: bool = False,
         scoped_requests: bool = False,
         shared_request_scope: bool = False,
+        linked_tests: bool = False,
     ) -> None:
         self.grant = grant.model_copy(deep=True)
         self.channel = channel
         self.adapter = adapter
         self.budget = budget or RunBudget()
         self.adapter_name = adapter_name
-        self.shared_request_scope = shared_request_scope
-        self.scoped_requests = scoped_requests or shared_request_scope
+        self.linked_tests = linked_tests
+        self.shared_request_scope = shared_request_scope or linked_tests
+        self.scoped_requests = scoped_requests or self.shared_request_scope
         self.structured_requests = structured_requests or self.scoped_requests
         self.required_tools = tuple(dict.fromkeys(required_tools))
         if any(tool not in self.grant.tools for tool in self.required_tools):
@@ -169,6 +173,7 @@ class InvestigationRunner:
             structured_requests=self.structured_requests,
             scoped_requests=self.scoped_requests,
             shared_request_scope=self.shared_request_scope,
+            linked_tests=self.linked_tests,
         )
         results: list[ToolResult] = []
         records: dict[tuple[str, str], EvidenceRecord] = {}
@@ -201,6 +206,8 @@ class InvestigationRunner:
                     if self.shared_request_scope:
                         context_data["shared_request_scope"] = True
                         context_data["request_scope_ref"] = scope_digest(scope_context(results))
+                    if self.linked_tests:
+                        context_data["linked_tests"] = True
                     context = canonical(context_data).decode()
                     raw = await asyncio.wait_for(
                         self.adapter.next_step(context), self.budget.operation_seconds
@@ -223,6 +230,16 @@ class InvestigationRunner:
                                 decision.evidence_requests,
                                 results,
                                 scope_context(results) if self.shared_request_scope else None,
+                            )
+                            validate_statement_tests(
+                                decision.hypotheses,
+                                decision.alternative_explanations,
+                                [request.tests for request in decision.evidence_requests],
+                                required=self.linked_tests,
+                                evidence_goals=[
+                                    request.evidence_needed
+                                    for request in decision.evidence_requests
+                                ],
                             )
                         except ValueError as exc:
                             raise RunStopped("blocked", str(exc)) from exc
@@ -445,4 +462,7 @@ class EvidenceReviewAdapter:
         elif context.get("scoped_requests"):
             for request in cast(list[dict[str, object]], answer["evidence_requests"]):
                 request["scope"] = context["request_scope"]
+        if context.get("linked_tests"):
+            for request in cast(list[dict[str, object]], answer["evidence_requests"]):
+                request["tests"] = ["hypotheses:0"]
         return answer

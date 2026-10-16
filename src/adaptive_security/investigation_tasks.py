@@ -130,6 +130,7 @@ async def run_tasks(
     structured_requests: bool = False,
     scoped_requests: bool = False,
     shared_request_scope: bool = False,
+    linked_tests: bool = False,
 ) -> dict[str, object]:
     if slow_local and model is None:
         raise ValueError("Slow local profile requires an Ollama model")
@@ -161,6 +162,7 @@ async def run_tasks(
             structured_requests=structured_requests,
             scoped_requests=scoped_requests,
             shared_request_scope=shared_request_scope,
+            linked_tests=linked_tests,
         ).run()
         actual = report.conclusion
         observed = (
@@ -210,6 +212,7 @@ async def run_tasks(
                 "grounded_schema.py",
                 "evidence_requests.py",
                 "request_scope.py",
+                "statement_tests.py",
                 "evidence_brief.py",
                 "investigation_tools.py",
             )

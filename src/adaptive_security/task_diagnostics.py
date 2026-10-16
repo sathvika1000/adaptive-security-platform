@@ -33,6 +33,7 @@ def inspect_session(directory: Path) -> dict[str, object]:
                 "structured_requests": run.structured_requests,
                 "scoped_requests": run.scoped_requests,
                 "shared_request_scope": run.shared_request_scope,
+                "linked_tests": run.linked_tests,
                 "shared_scope": run.shared_scope.model_dump(mode="json")
                 if run.shared_scope
                 else None,

@@ -288,3 +288,12 @@ verbatim hypotheses and alternatives beside returned assertions, exact conclusio
 checks and recorded timestamp groups. Valid structured requests are compared with active gaps
 without assuming every unrequested gap is an error. The view does not infer per-statement
 support, score semantics, call a model or change saved reviews. See `REASONING_WORKSHEET.md`.
+
+### Explicit testing intentions for hypotheses and alternatives
+
+Added opt-in linked tests: proposed evidence requests reference explanations by local statement
+IDs. The controller validates existence, duplicate references and coverage, with a compact
+one-hypothesis/one-alternative profile under unchanged inference budgets. Audit and worksheet
+show these as testing intentions rather than evidential support, and request review binds the
+original explanation context. See `LINKED_EXPLANATION_TESTS.md`; semantic usefulness remains
+an analyst judgment and actual model behavior needs a fresh local evaluation.
