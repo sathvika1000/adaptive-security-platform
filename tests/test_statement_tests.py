@@ -216,3 +216,70 @@ def test_cli_audit_worksheet_and_review_bind_exact_statement_links(tmp_path, mon
     assert audit["tasks"][0]["statement_test_linkage"] == "invalid_statement_test_links"
     with pytest.raises(ValueError, match="supplied explanation"):
         request_review.prepare(report, "a" * 64)
+
+
+@pytest.mark.parametrize("index", range(5))
+@pytest.mark.parametrize("mask", range(4))
+def test_provider_schema_couples_existing_explanations_to_links(index, mask):
+    import jsonschema
+
+    from adaptive_security.evidence_requests import request_catalog
+    from adaptive_security.grounded_schema import grounded_schema
+    from adaptive_security.investigation_runner import canonical
+    from adaptive_security.ollama_adapter import ModelDecision
+
+    item = task(index)
+    context = {
+        "allowed_tools": item.grant.tools,
+        "results": [item.evidence.model_dump(mode="json")],
+        "structured_requests": True, "shared_request_scope": True,
+        "scoped_requests": True, "linked_tests": True,
+    }
+    schema = grounded_schema(ModelDecision.model_json_schema(), json.dumps(context))
+    assert len(canonical(schema)) <= 12 * 1024
+    refs = []
+    decision = proposal(index)
+    for bit, name in enumerate(("hypotheses", "alternative_explanations")):
+        if mask & (1 << bit):
+            refs.append(f"{name}:0")
+        else:
+            decision[name] = []
+    gap = request_catalog([item.evidence])[0]
+    decision["evidence_requests"][0].update(
+        gap_id=gap["gap_id"], evidence_source=gap["evidence_source"],
+    )
+    decision["evidence_requests"][0]["tests"] = refs
+    jsonschema.validate({"decision": decision}, schema)
+    # Actual failure: empty explanation arrays with references to missing slots.
+    for name in ("hypotheses", "alternative_explanations"):
+        bad = copy.deepcopy(decision)
+        bad[name] = []
+        bad["evidence_requests"][0]["tests"] = [f"{name}:0"]
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate({"decision": bad}, schema)
+    # Exact citations, gap/source coupling and scope pins survive factoring.
+    for field, value in (("evidence_source", "collector_health"), ("scope_ref", "a" * 64)):
+        bad = copy.deepcopy(decision)
+        if bad["evidence_requests"][0][field] == value:
+            value = "authentication_details"
+        bad["evidence_requests"][0][field] = value
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate({"decision": bad}, schema)
+    bad = copy.deepcopy(decision)
+    bad["observations"] = [{
+        "source": "invented", "event_id": "invented", "field": "outcome", "value": "success",
+    }]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({"decision": bad}, schema)
+
+
+def test_controller_still_blocks_observed_dangling_links_without_repair():
+    decision = proposal()
+    decision["hypotheses"] = []
+    decision["alternative_explanations"] = []
+    report = run(decision)
+    assert report.status == "blocked" and report.conclusion is None
+    assert "supplied explanation" in report.detail
+    saved = report.proposals[-1]["decision"]
+    assert saved["hypotheses"] == saved["alternative_explanations"] == []
+    assert saved["evidence_requests"][0]["tests"] == decision["evidence_requests"][0]["tests"]

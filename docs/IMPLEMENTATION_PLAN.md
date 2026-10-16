@@ -297,3 +297,13 @@ one-hypothesis/one-alternative profile under unchanged inference budgets. Audit 
 show these as testing intentions rather than evidential support, and request review binds the
 original explanation context. See `LINKED_EXPLANATION_TESTS.md`; semantic usefulness remains
 an analyst judgment and actual model behavior needs a fresh local evaluation.
+
+
+### Consistent explanation-reference guidance
+
+The first linked-test local run exposed four dangling-reference rejections despite empty
+explanation arrays. Offer four provider conclusion branches with test IDs restricted to
+populated slots, preserving empty explanations and all independent controller checks. Keep
+inference budgets, archived runs and review identities unchanged. Regression checks cover all
+five tasks and four explanation combinations, plus provider-bypass rejection. A fresh Mac run
+is required to assess actual Ollama behavior; completion does not establish reasoning quality.
