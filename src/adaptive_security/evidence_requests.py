@@ -2,11 +2,11 @@
 
 from typing import Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from adaptive_security.evidence_brief import build_brief
 from adaptive_security.investigation_tools import ToolResult
-from adaptive_security.request_scope import RequestScope, validate_scope
+from adaptive_security.request_scope import RequestScope, scope_digest, validate_scope
 
 
 class EvidenceRequest(BaseModel):
@@ -28,7 +28,14 @@ class EvidenceRequest(BaseModel):
         "session_correlation",
     ]
     scope: RequestScope | None = None
+    scope_ref: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     evidence_needed: str = Field(min_length=8, max_length=256)
+
+    @model_validator(mode="after")
+    def one_scope_form(self) -> "EvidenceRequest":
+        if self.scope is not None and self.scope_ref is not None:
+            raise ValueError("Use either inline scope or shared scope reference")
+        return self
 
     @field_validator("evidence_needed")
     @classmethod
@@ -46,7 +53,13 @@ def request_catalog(results: list[ToolResult]) -> list[dict[str, str]]:
     return cast(list[dict[str, str]], build_brief(results)["gap_catalog"])
 
 
-def validate_requests(requests: list[EvidenceRequest], results: list[ToolResult]) -> None:
+def validate_requests(
+    requests: list[EvidenceRequest],
+    results: list[ToolResult],
+    shared_scope: RequestScope | None = None,
+) -> None:
+    if shared_scope is not None:
+        validate_scope(shared_scope, results)
     active = {gap["gap_id"]: gap["evidence_source"] for gap in request_catalog(results)}
     seen = set()
     for request in requests:
@@ -56,10 +69,15 @@ def validate_requests(requests: list[EvidenceRequest], results: list[ToolResult]
         if key in seen:
             raise ValueError("Duplicate evidence request")
         seen.add(key)
+        if request.scope_ref is not None and (
+            shared_scope is None or request.scope_ref != scope_digest(shared_scope)
+        ):
+            raise ValueError("Request scope reference does not match validated shared scope")
         if request.scope is not None:
             validate_scope(request.scope, results)
 
 
 def request_payload(request: EvidenceRequest) -> dict[str, object]:
     # Preserve canonical hashes of requests saved before scope fields existed.
-    return request.model_dump(mode="json", exclude={"scope"} if request.scope is None else set())
+    absent = {name for name in ("scope", "scope_ref") if getattr(request, name) is None}
+    return request.model_dump(mode="json", exclude=absent)

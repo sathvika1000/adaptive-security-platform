@@ -272,3 +272,11 @@ unresolved collection interval and unestablished account/resource/collector scop
 validates independently of provider guidance; audit and human review include the scope object.
 Legacy request hashes remain compatible. New collection intervals and source actions remain
 unsupported. See `SCOPED_EVIDENCE_REQUESTS.md` for the fresh local evaluation command and limits.
+
+### Shared scope for compact request responses
+
+Added opt-in shared request scope to reduce repeated model output after the inline-scope mixed
+outcome task was truncated. Each request references a digest of current controller-derived
+context; reports store the full scope once. Controller, audit and human review validate both
+reference and resolved context. Existing budgets and earlier provider profiles are unchanged.
+See `SHARED_REQUEST_SCOPE.md`; actual local-model completion and semantic quality need review.

@@ -188,7 +188,10 @@ class OllamaAdapter:
                         else _SYSTEM
                     )
                     + (
-                        "Copy request_scope exactly into each request scope. Timestamps are "
+                        "Use request_scope_ref as scope_ref in every evidence request. "
+                        "Do not emit inline scope; the controller stores it once. "
+                        if json.loads(context_json).get("shared_request_scope") is True
+                        else "Copy request_scope exactly into each request scope. Timestamps are "
                         "observations, not a collection interval or event order. "
                         "Unknown scope needs analyst definition. "
                         if json.loads(context_json).get("scoped_requests") is True

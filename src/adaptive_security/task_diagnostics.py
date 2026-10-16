@@ -32,6 +32,10 @@ def inspect_session(directory: Path) -> dict[str, object]:
                 "required_tools": run.required_tools,
                 "structured_requests": run.structured_requests,
                 "scoped_requests": run.scoped_requests,
+                "shared_request_scope": run.shared_request_scope,
+                "shared_scope": run.shared_scope.model_dump(mode="json")
+                if run.shared_scope
+                else None,
                 "checks": task.checks.model_dump(),
                 "proposals_available": bool(run.proposals),
                 "proposals": run.proposals,

@@ -45,9 +45,11 @@ async def create_session(
     suite_version: str = "baseline",
     structured_requests: bool = False,
     scoped_requests: bool = False,
+    shared_request_scope: bool = False,
 ) -> bool:
     if slow_local and model is None:
         raise ValueError("Slow local profile requires an Ollama model")
+    scoped_requests = scoped_requests or shared_request_scope
     structured_requests = structured_requests or scoped_requests
     raw = bundled_suite(suite_version)
     suite_digest = hashlib.sha256(raw).hexdigest()
@@ -71,6 +73,7 @@ async def create_session(
             "suite_version": suite_version,
             "structured_requests": structured_requests,
             "scoped_requests": scoped_requests,
+            "shared_request_scope": shared_request_scope,
             "state": "started-not-complete",
         },
     )
@@ -86,6 +89,8 @@ async def create_session(
             options["structured_requests"] = True
         if scoped_requests:
             options["scoped_requests"] = True
+        if shared_request_scope:
+            options["shared_request_scope"] = True
         report = await run_tasks(suite, model, **options)
         report["suite_file_sha256"] = suite_digest
         parsed = TaskReport.model_validate(report)
@@ -110,6 +115,7 @@ async def create_session(
                 "suite_version": suite_version,
                 "structured_requests": structured_requests,
                 "scoped_requests": scoped_requests,
+                "shared_request_scope": shared_request_scope,
                 "bundled_suite_sha256": suite_digest,
                 "artifact_sha256": artifacts,
                 "run_summary": report["summary"],
@@ -140,6 +146,7 @@ def main() -> int:
     parser.add_argument("--slow-local", action="store_true")
     parser.add_argument("--structured-requests", action="store_true")
     parser.add_argument("--scoped-requests", action="store_true")
+    parser.add_argument("--shared-request-scope", action="store_true")
     parser.add_argument(
         "--suite-version",
         choices=("baseline", "expanded", "labelled", "neutral"),
@@ -158,6 +165,7 @@ def main() -> int:
                 suite_version=args.suite_version,
                 structured_requests=args.structured_requests,
                 **({"scoped_requests": True} if args.scoped_requests else {}),
+                **({"shared_request_scope": True} if args.shared_request_scope else {}),
             )
         )
     except (OSError, ValueError, RuntimeError, ImportError):
