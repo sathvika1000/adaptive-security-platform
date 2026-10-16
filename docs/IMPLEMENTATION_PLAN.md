@@ -248,3 +248,11 @@ provider usage. Controller scope/citations remain independent of model output. T
 provider responses through actual MCP; real-model behavior on the Mac is not yet measured.
 OLLAMA_INVESTIGATION.md covers local-only daemon setup and the first user-run command. Independent
 reasoning evaluation, model provenance, hard isolation and production pilot gates remain open.
+
+### Gap-linked evidence-request proposals
+
+Added opt-in structured planning for synthetic analyst tasks: bounded request objects link
+current deterministic gaps to matching evidence-source categories. The controller validates
+links independently of provider schema guidance; the offline audit rechecks journal evidence.
+Requests remain unexecuted analyst proposals. Actual local-model evaluation and human semantic
+review are the next validation step; see `STRUCTURED_EVIDENCE_REQUESTS.md`.

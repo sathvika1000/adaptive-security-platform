@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
+from adaptive_security.evidence_requests import EvidenceRequest, request_catalog, validate_requests
 from adaptive_security.investigation_access import InvestigationGrant
 from adaptive_security.investigation_tools import EvidenceRecord, ToolName, ToolRequest, ToolResult
 
@@ -42,6 +43,7 @@ class Conclusion(StrictModel):
     hypotheses: list[str] = Field(default_factory=list, max_length=5)
     alternative_explanations: list[BoundedExplanation] = Field(default_factory=list, max_length=3)
     collection_limits: list[BoundedExplanation] = Field(default_factory=list, max_length=3)
+    evidence_requests: list[EvidenceRequest] = Field(default_factory=list, max_length=3)
     next_checks: list[BoundedExplanation] = Field(default_factory=list, max_length=3)
 
 
@@ -89,6 +91,7 @@ class RunReport(BaseModel):
     evidence_bytes: int
     journal: list[dict[str, object]]
     proposals: list[dict[str, object]] = Field(default_factory=list)
+    structured_requests: bool = False
     required_tools: list[ToolName] = Field(default_factory=list)
     conclusion: Conclusion | None = None
     adapter_usage: AdapterUsage | None = None
@@ -96,6 +99,7 @@ class RunReport(BaseModel):
         default_factory=lambda: [
             "Citations check returned observations, not publisher authenticity or attack truth.",
             "Hypotheses are unverified proposals, not established facts.",
+            "Evidence requests are unexecuted proposals; source access and wording are unverified.",
             "Only returned pages are available; incomplete data does not prove benign behavior.",
             "Labels, scores, saved analyst reviews and live incidents are unchanged.",
             "Async deadlines require cooperative adapters; this is not a process sandbox.",
@@ -122,12 +126,14 @@ class InvestigationRunner:
         budget: RunBudget | None = None,
         adapter_name: str = "custom-adapter",
         required_tools: tuple[ToolName, ...] = (),
+        structured_requests: bool = False,
     ) -> None:
         self.grant = grant.model_copy(deep=True)
         self.channel = channel
         self.adapter = adapter
         self.budget = budget or RunBudget()
         self.adapter_name = adapter_name
+        self.structured_requests = structured_requests
         self.required_tools = tuple(dict.fromkeys(required_tools))
         if any(tool not in self.grant.tools for tool in self.required_tools):
             raise ValueError("Required tools must be granted")
@@ -152,6 +158,7 @@ class InvestigationRunner:
             evidence_bytes=0,
             journal=[],
             required_tools=list(self.required_tools),
+            structured_requests=self.structured_requests,
         )
         results: list[ToolResult] = []
         records: dict[tuple[str, str], EvidenceRecord] = {}
@@ -173,6 +180,9 @@ class InvestigationRunner:
                     }
                     if self.required_tools:
                         context_data["required_tools_remaining"] = required_remaining
+                    if self.structured_requests:
+                        context_data["structured_requests"] = True
+                        context_data["evidence_gaps"] = request_catalog(results)
                     context = canonical(context_data).decode()
                     raw = await asyncio.wait_for(
                         self.adapter.next_step(context), self.budget.operation_seconds
@@ -190,6 +200,16 @@ class InvestigationRunner:
                     if isinstance(decision, Conclusion):
                         if required_remaining:
                             raise RunStopped("blocked", "Required evidence read not completed")
+                        try:
+                            validate_requests(decision.evidence_requests, results)
+                        except ValueError as exc:
+                            raise RunStopped("blocked", str(exc)) from exc
+                        if self.structured_requests and (
+                            not decision.evidence_requests or decision.next_checks
+                        ):
+                            raise RunStopped(
+                                "blocked", "Structured requests required without free-text checks"
+                            )
                         if any(len(text) > 1024 for text in decision.hypotheses):
                             raise RunStopped("blocked", "Hypothesis exceeds allowed length")
                         for claim in decision.observations:
@@ -368,7 +388,7 @@ class EvidenceReviewAdapter:
                         "value": record["category"],
                     }
                 )
-        return {
+        answer: dict[str, object] = {
             "kind": "finish",
             "disposition": "needs_review" if claims else "inconclusive",
             "observations": claims,
@@ -376,3 +396,13 @@ class EvidenceReviewAdapter:
                 "Independent context is needed to distinguish attack activity from administration."
             ],
         }
+        if context.get("structured_requests"):
+            answer["evidence_requests"] = [
+                {
+                    "gap_id": gap["gap_id"],
+                    "evidence_source": gap["evidence_source"],
+                    "evidence_needed": gap["evidence_needed"],
+                }
+                for gap in context["evidence_gaps"][:2]
+            ]
+        return answer

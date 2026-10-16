@@ -171,7 +171,23 @@ class OllamaAdapter:
             "format": schema,
             "keep_alive": "5m",
             "messages": [
-                {"role": "system", "content": _SYSTEM},
+                {
+                    "role": "system",
+                    "content": (
+                        _SYSTEM.replace(
+                            "Give next_checks as proposed evidence to review, "
+                            "never executable commands or actions. ",
+                            "Return next_checks empty. Propose one or two evidence_requests "
+                            "using current "
+                            "evidence_gaps IDs and matching source categories, "
+                            "with a specific evidence goal. "
+                            "These are analyst proposals only; source availability "
+                            "and permission are unknown. ",
+                        )
+                        if json.loads(context_json).get("structured_requests") is True
+                        else _SYSTEM
+                    ),
+                },
                 {"role": "user", "content": context_json},
             ],
             "options": {"temperature": 0, "num_ctx": CONTEXT_TOKENS, "num_predict": OUTPUT_TOKENS},

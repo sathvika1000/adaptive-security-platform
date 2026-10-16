@@ -43,6 +43,7 @@ async def create_session(
     *,
     slow_local: bool = False,
     suite_version: str = "baseline",
+    structured_requests: bool = False,
 ) -> bool:
     if slow_local and model is None:
         raise ValueError("Slow local profile requires an Ollama model")
@@ -66,6 +67,7 @@ async def create_session(
             "model": model,
             "slow_local": slow_local,
             "suite_version": suite_version,
+            "structured_requests": structured_requests,
             "state": "started-not-complete",
         },
     )
@@ -74,11 +76,12 @@ async def create_session(
         descriptor = os.open(directory / "suite.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(raw)
-        report = (
-            await run_tasks(suite, model, slow_local=True)
-            if slow_local
-            else await run_tasks(suite, model)
-        )
+        options = {}
+        if slow_local:
+            options["slow_local"] = True
+        if structured_requests:
+            options["structured_requests"] = True
+        report = await run_tasks(suite, model, **options)
         report["suite_file_sha256"] = suite_digest
         parsed = TaskReport.model_validate(report)
         write_private(directory / "report.json", report)
@@ -100,6 +103,7 @@ async def create_session(
                 "model": model,
                 "slow_local": slow_local,
                 "suite_version": suite_version,
+                "structured_requests": structured_requests,
                 "bundled_suite_sha256": suite_digest,
                 "artifact_sha256": artifacts,
                 "run_summary": report["summary"],
@@ -128,6 +132,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     parser.add_argument("--slow-local", action="store_true")
+    parser.add_argument("--structured-requests", action="store_true")
     parser.add_argument(
         "--suite-version",
         choices=("baseline", "expanded", "labelled", "neutral"),
@@ -144,6 +149,7 @@ def main() -> int:
                 args.ollama_model,
                 slow_local=args.slow_local,
                 suite_version=args.suite_version,
+                structured_requests=args.structured_requests,
             )
         )
     except (OSError, ValueError, RuntimeError, ImportError):
