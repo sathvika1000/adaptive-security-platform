@@ -186,6 +186,13 @@ class OllamaAdapter:
                         )
                         if json.loads(context_json).get("structured_requests") is True
                         else _SYSTEM
+                    )
+                    + (
+                        "Copy request_scope exactly into each request scope. Timestamps are "
+                        "observations, not a collection interval or event order. "
+                        "Unknown scope needs analyst definition. "
+                        if json.loads(context_json).get("scoped_requests") is True
+                        else ""
                     ),
                 },
                 {"role": "user", "content": context_json},

@@ -6,6 +6,7 @@ import json
 from adaptive_security.evidence_requests import request_catalog
 from adaptive_security.investigation_runner import RunStopped, canonical
 from adaptive_security.investigation_tools import ToolResult
+from adaptive_security.request_scope import scope_context
 
 FIELDS = ("outcome", "category", "action", "source_ip", "event_time")
 
@@ -91,6 +92,12 @@ def grounded_schema(base: dict[str, object], context_json: str) -> dict[str, obj
     conclusion["properties"]["next_checks"]["minItems"] = 1
     if context.get("structured_requests") is True:
         request_schema = definitions["EvidenceRequest"]
+        if context.get("scoped_requests") is True:
+            request_schema["properties"]["scope"] = {"$ref": "#/$defs/RequestScope"}
+            request_schema["required"].append("scope")
+            definitions["RequestScope"] = {"const": scope_context(results).model_dump(mode="json")}
+        else:
+            request_schema["properties"].pop("scope", None)
         requests = []
         for gap in request_catalog(results):
             candidate = copy.deepcopy(request_schema)
@@ -108,6 +115,9 @@ def grounded_schema(base: dict[str, object], context_json: str) -> dict[str, obj
     else:
         conclusion["properties"].pop("evidence_requests", None)
         definitions.pop("EvidenceRequest", None)
+    if context.get("scoped_requests") is not True:
+        for name in ("RequestScope", "EventReference", "CollectionInterval"):
+            definitions.pop(name, None)
     if claims:
         conclusion["properties"]["alternative_explanations"]["minItems"] = 1
     if results and not claims:

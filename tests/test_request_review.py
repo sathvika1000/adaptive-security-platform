@@ -39,7 +39,7 @@ def test_review_inventory_blank_ratings_and_non_mutation(session):
         assert row.notes == "" and row.objective and row.gap_basis
         assert (
             row.request_sha256
-            == hashlib.sha256(review.canonical(row.request.model_dump())).hexdigest()
+            == hashlib.sha256(review.canonical(review.request_payload(row.request))).hexdigest()
         )
     sheet.assessments[0].request.evidence_needed = "Changed only on the review copy."
     assert report.model_dump_json() == original

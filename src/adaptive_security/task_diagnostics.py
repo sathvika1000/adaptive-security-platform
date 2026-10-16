@@ -31,6 +31,7 @@ def inspect_session(directory: Path) -> dict[str, object]:
                 "tool_calls": run.tool_calls,
                 "required_tools": run.required_tools,
                 "structured_requests": run.structured_requests,
+                "scoped_requests": run.scoped_requests,
                 "checks": task.checks.model_dump(),
                 "proposals_available": bool(run.proposals),
                 "proposals": run.proposals,

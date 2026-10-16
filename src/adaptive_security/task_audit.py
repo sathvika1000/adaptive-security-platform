@@ -91,6 +91,21 @@ def audit_report(report: TaskReport, digest: str) -> dict[str, object]:
                 linkage = "invalid_gap_source_links"
         elif task.run.structured_requests:
             linkage = "no_accepted_structured_requests"
+        scope_state = "not_recorded"
+        if conclusion and any(
+            request.scope is not None for request in conclusion.evidence_requests
+        ):
+            scope_state = (
+                "validated_returned_context"
+                if linkage == "active_gap_source_links_validated"
+                else "scope_validation_failed"
+            )
+        if task.run.scoped_requests and (
+            not conclusion
+            or not conclusion.evidence_requests
+            or any(request.scope is None for request in conclusion.evidence_requests)
+        ):
+            scope_state = "missing_required_scope"
         rows.append(
             {
                 "task_id": task.task_id,
@@ -103,6 +118,8 @@ def audit_report(report: TaskReport, digest: str) -> dict[str, object]:
                 else [],
                 "next_check_gap_linkage": linkage,
                 "structured_requests": task.run.structured_requests,
+                "scoped_requests": task.run.scoped_requests,
+                "request_scope_validation": scope_state,
                 "semantic_review": "pending-human-review",
             }
         )
@@ -113,7 +130,12 @@ def audit_report(report: TaskReport, digest: str) -> dict[str, object]:
         "report_sha256": digest,
         "audit_source_sha256": {
             name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
-            for name in ("task_audit.py", "evidence_brief.py", "evidence_requests.py")
+            for name in (
+                "task_audit.py",
+                "evidence_brief.py",
+                "evidence_requests.py",
+                "request_scope.py",
+            )
         },
         "task_count": len(rows),
         "tasks": rows,

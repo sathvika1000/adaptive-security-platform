@@ -264,3 +264,11 @@ resolution. Each assessment binds exact request content, index, task/run IDs and
 to the pinned original report. Summaries require complete ratings and notes, retain zero-request
 tasks and not-assessable counts, and assign no quality score. Original runs and reviews remain
 unchanged; see `EVIDENCE_REQUEST_REVIEW.md`. Omitted gaps need separate analyst attention.
+
+### Explicit context for evidence-request proposals
+
+Added opt-in scoped requests with exact returned source/event/timestamp anchors, an explicitly
+unresolved collection interval and unestablished account/resource/collector scope. The controller
+validates independently of provider guidance; audit and human review include the scope object.
+Legacy request hashes remain compatible. New collection intervals and source actions remain
+unsupported. See `SCOPED_EVIDENCE_REQUESTS.md` for the fresh local evaluation command and limits.
