@@ -3,6 +3,7 @@
 import copy
 import json
 
+from adaptive_security.evidence_requests import request_catalog
 from adaptive_security.investigation_runner import RunStopped, canonical
 from adaptive_security.investigation_tools import ToolResult
 
@@ -88,6 +89,25 @@ def grounded_schema(base: dict[str, object], context_json: str) -> dict[str, obj
     ]
     conclusion["properties"]["collection_limits"]["minItems"] = 1
     conclusion["properties"]["next_checks"]["minItems"] = 1
+    if context.get("structured_requests") is True:
+        request_schema = definitions["EvidenceRequest"]
+        requests = []
+        for gap in request_catalog(results):
+            candidate = copy.deepcopy(request_schema)
+            for name in ("gap_id", "evidence_source"):
+                candidate["properties"][name] = {"type": "string", "const": gap[name]}
+            requests.append(candidate)
+        conclusion["properties"]["evidence_requests"] = {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {"anyOf": requests},
+        }
+        conclusion["required"].append("evidence_requests")
+        conclusion["properties"]["next_checks"].update(minItems=0, maxItems=0)
+    else:
+        conclusion["properties"].pop("evidence_requests", None)
+        definitions.pop("EvidenceRequest", None)
     if claims:
         conclusion["properties"]["alternative_explanations"]["minItems"] = 1
     if results and not claims:

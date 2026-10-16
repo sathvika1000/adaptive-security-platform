@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 from adaptive_security.evidence_brief import build_brief
+from adaptive_security.evidence_requests import validate_requests
 from adaptive_security.investigation_runner import RunReport, canonical
 from adaptive_security.investigation_tools import ToolResult
 from adaptive_security.task_pair import saved_report
@@ -81,6 +82,15 @@ def audit_report(report: TaskReport, digest: str) -> dict[str, object]:
     for task in report.tasks:
         results = accepted_results(task.run)
         conclusion = task.run.conclusion
+        linkage = "not_encoded_in_legacy_free_text"
+        if conclusion and conclusion.evidence_requests:
+            try:
+                validate_requests(conclusion.evidence_requests, results)
+                linkage = "active_gap_source_links_validated"
+            except ValueError:
+                linkage = "invalid_gap_source_links"
+        elif task.run.structured_requests:
+            linkage = "no_accepted_structured_requests"
         rows.append(
             {
                 "task_id": task.task_id,
@@ -91,7 +101,8 @@ def audit_report(report: TaskReport, digest: str) -> dict[str, object]:
                 "next_check_flags": next_check_flags(conclusion.next_checks, results)
                 if conclusion
                 else [],
-                "next_check_gap_linkage": "not_encoded_in_legacy_free_text",
+                "next_check_gap_linkage": linkage,
+                "structured_requests": task.run.structured_requests,
                 "semantic_review": "pending-human-review",
             }
         )
@@ -102,7 +113,7 @@ def audit_report(report: TaskReport, digest: str) -> dict[str, object]:
         "report_sha256": digest,
         "audit_source_sha256": {
             name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
-            for name in ("task_audit.py", "evidence_brief.py")
+            for name in ("task_audit.py", "evidence_brief.py", "evidence_requests.py")
         },
         "task_count": len(rows),
         "tasks": rows,
@@ -111,7 +122,7 @@ def audit_report(report: TaskReport, digest: str) -> dict[str, object]:
             "Text checks recognize narrow literal patterns, not the meaning or truth of an answer.",
             "No flags does not establish useful planning or an evidence-supported hypothesis.",
             "Gaps and source suggestions are application rules needing analyst judgment.",
-            "Free-text gap linkage is not encoded; structured requests are future work.",
+            "Structured links do not verify request wording, source existence or permission.",
             "No model, live source or response action is called; semantic review remains pending.",
         ],
     }

@@ -382,4 +382,5 @@ def test_slow_http_timeout_reaches_client_without_changing_token_options():
         "alternative_explanations": [],
         "collection_limits": [],
         "next_checks": [],
+        "evidence_requests": [],
     }

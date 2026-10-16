@@ -114,7 +114,8 @@ def test_slow_profile_requires_model_before_creating_directory(tmp_path):
 def test_slow_cli_forwards_profile(tmp_path, monkeypatch):
     calls = []
 
-    async def recording(directory, model, *, slow_local, suite_version):
+    async def recording(directory, model, *, slow_local, suite_version, structured_requests):
+        assert structured_requests is False
         calls.append((directory, model, slow_local, suite_version))
         return True
 
