@@ -52,31 +52,53 @@ nonempty `tests`; copied explanation context is checked during summarization. Ed
 context invalidates the review. Older requests omit empty test lists when calculating hashes,
 so archived request reviews remain compatible. Rating relevance still requires human judgment.
 
+## Consistent provider branches
+
+The first linked-test local run (`artifacts/qwen25-linked-tests-v1`) completed one of five
+tasks. Four were blocked because requests named explanation slots while the corresponding
+arrays were empty. Those rejected proposals remain useful failure evidence; they are not
+accepted conclusions. The controller correctly refused the dangling references.
+
+Provider guidance now offers four explicit conclusion shapes: neither explanation, hypothesis
+only, alternative only, or both. Each shape fixes the array lengths and restricts request test
+IDs to its populated slots. Empty arrays remain legitimate and imply empty test lists when
+both are empty. Reusable field definitions keep the schema within the existing 12 KiB limit.
+No explanation is invented, no link is deleted, and rejected outputs are not repaired or retried.
+The controller still checks reference existence, duplicates and complete test coverage even if
+a provider bypasses its schema. Coverage and semantic usefulness are not guaranteed by these
+provider branches.
+
+This uses explicit `anyOf` object alternatives rather than cross-field conditionals or
+`contains`. The [llama.cpp grammar guidance](https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md#json-schemas--gbnf)
+warns that unsupported JSON Schema features can be skipped, including conditionals, `contains`
+and `uniqueItems`. Automated JSON Schema validation and mocked provider calls cannot certify
+the installed Ollama grammar implementation; a fresh local run remains necessary.
+
 ## Run on the Mac
 
-Keep `artifacts/qwen25-shared-scope-v1` and its worksheet unchanged. Use a fresh directory:
+Keep the prior shared-scope and linked-test directories unchanged. Use a fresh directory:
 
 ```bash
 cd ~/adaptive-security-platform
 git fetch origin
-git switch investigation/linked-explanation-tests
+git switch investigation/consistent-explanation-links
 source .venv/bin/activate
 python -m pip install -e '.[mcp]'
 python -m adaptive_security.task_session \
-  artifacts/qwen25-linked-tests-v1 \
+  artifacts/qwen25-consistent-links-v1 \
   --suite-version neutral --linked-tests \
   --ollama-model qwen2.5-coder:7b --slow-local
 python -m adaptive_security.task_diagnostics \
-  artifacts/qwen25-linked-tests-v1
+  artifacts/qwen25-consistent-links-v1
 ```
 
 Inspect completion, citations, requests and model usage first. Then open the worksheet:
 
 ```bash
 python -m adaptive_security.reasoning_audit \
-  artifacts/qwen25-linked-tests-v1 \
-  artifacts/qwen25-linked-tests-v1/reasoning-review-v1
-open artifacts/qwen25-linked-tests-v1/reasoning-review-v1/index.html
+  artifacts/qwen25-consistent-links-v1 \
+  artifacts/qwen25-consistent-links-v1/reasoning-review-v1
+open artifacts/qwen25-consistent-links-v1/reasoning-review-v1/index.html
 ```
 
 For each declared test, judge whether the requested evidence could distinguish the explanation

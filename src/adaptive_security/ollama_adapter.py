@@ -209,7 +209,7 @@ class OllamaAdapter:
                         "would distinguish or weaken its linked explanations. Requests "
                         "may test both. "
                         "Use tests:[] for supplementary requests or when there are no "
-                        "explanations. "
+                        "explanations. Never reference an explanation whose array is empty. "
                         "Explanations remain unverified. Equal timestamps do not "
                         "establish order, and "
                         "outcomes alone do not establish causes. These links do not prove support. "

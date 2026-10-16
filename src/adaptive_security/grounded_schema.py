@@ -2,6 +2,7 @@
 
 import copy
 import json
+from typing import Any
 
 from adaptive_security.evidence_requests import request_catalog
 from adaptive_security.investigation_runner import RunStopped, canonical
@@ -9,6 +10,90 @@ from adaptive_security.investigation_tools import ToolResult
 from adaptive_security.request_scope import scope_context, scope_digest
 
 FIELDS = ("outcome", "category", "action", "source_ip", "event_time")
+
+
+def _linked_conclusions(definitions: dict[str, Any], conclusion: dict[str, Any]) -> None:
+    """Offer four coherent shapes without conditional JSON Schema keywords.
+
+    Factor repeated fields to keep exact evidence and gap choices within the
+    existing provider-schema budget. Controller coverage checks remain separate.
+    """
+    observations = conclusion["properties"]["observations"]
+    if observations.get("maxItems") == 0:
+        observations["items"] = {"type": "object"}
+    else:
+        # Whole-object constants preserve exact tuples with less repetition.
+        observations["items"]["anyOf"] = [
+            {"const": {name: field["const"] for name, field in claim["properties"].items()}}
+            for claim in observations["items"]["anyOf"]
+        ]
+    common = {}
+    for name, field in conclusion["properties"].items():
+        if name not in {"hypotheses", "alternative_explanations", "evidence_requests"}:
+            key = f"L{len(definitions)}"
+            definitions[key] = field
+            common[name] = {"$ref": f"#/$defs/{key}"}
+    requests = conclusion["properties"]["evidence_requests"]
+    # All gap candidates share these fields; only gap/source constants differ.
+    request_fields = {}
+    for name, field in requests["items"]["anyOf"][0]["properties"].items():
+        if name not in {"gap_id", "evidence_source", "tests"}:
+            key = f"L{len(definitions)}"
+            definitions[key] = field
+            request_fields[name] = {"$ref": f"#/$defs/{key}"}
+    definitions["Ltext"] = {
+        "type": "array", "minItems": 1, "maxItems": 1,
+        "items": {"type": "string", "minLength": 1, "maxLength": 160},
+    }
+    definitions["Lempty"] = {"type": "array", "maxItems": 0, "items": {"type": "string"}}
+    gap_fields = []
+    for index, request in enumerate(requests["items"]["anyOf"]):
+        fields = {}
+        for prefix, name in (("g", "gap_id"), ("s", "evidence_source")):
+            key = f"L{prefix}{index}"
+            definitions[key] = request["properties"][name]
+            fields[name] = {"$ref": f"#/$defs/{key}"}
+        gap_fields.append(fields)
+    branches = []
+    for mask in range(4):
+        branch: dict[str, Any] = {
+            "type": "object",
+            "additionalProperties": False,
+            "required": list(conclusion["required"]),
+            "properties": copy.deepcopy(common),
+        }
+        refs = []
+        for bit, name in enumerate(("hypotheses", "alternative_explanations")):
+            present = bool(mask & (1 << bit))
+            branch["properties"][name] = {
+                "$ref": "#/$defs/Ltext" if present else "#/$defs/Lempty",
+            }
+            if present:
+                refs.append(f"{name}:0")
+        tests: dict[str, Any] = {"type": "array", "maxItems": len(refs)}
+        if refs:
+            tests["items"] = {"type": "string", "enum": refs}
+        else:
+            tests["items"] = {"type": "string"}
+        definitions[f"Lt{mask}"] = tests
+        candidates = []
+        for fields in gap_fields:
+            properties: dict[str, Any] = dict(request_fields, **fields)
+            properties["tests"] = {"$ref": f"#/$defs/Lt{mask}"}
+            candidates.append({
+                "type": "object", "additionalProperties": False,
+                "required": list(requests["items"]["anyOf"][0]["required"]),
+                "properties": properties,
+            })
+        branch["properties"]["evidence_requests"] = {
+            "type": "array", "minItems": 1, "maxItems": 2,
+            "items": {"anyOf": candidates},
+        }
+        branches.append(branch)
+    definitions["Conclusion"] = {"anyOf": branches}
+    # The linked branches replace this unconstrained request definition entirely.
+    definitions.pop("EvidenceRequest", None)
+    definitions.pop("ObservationClaim", None)
 
 
 def grounded_schema(base: dict[str, object], context_json: str) -> dict[str, object]:
@@ -149,6 +234,8 @@ def grounded_schema(base: dict[str, object], context_json: str) -> dict[str, obj
         conclusion["properties"]["alternative_explanations"]["minItems"] = 1
     if results and not claims:
         conclusion["properties"]["disposition"] = {"type": "string", "const": "inconclusive"}
+    if context.get("linked_tests") is True and context.get("structured_requests") is True:
+        _linked_conclusions(definitions, conclusion)
     required = context.get("required_tools_remaining", [])
     if not isinstance(required, list) or not all(
         isinstance(tool, str) and tool in allowed for tool in required
@@ -162,6 +249,10 @@ def grounded_schema(base: dict[str, object], context_json: str) -> dict[str, obj
     if not isinstance(properties, dict):
         raise ValueError("Expected decision properties")
     properties["decision"] = {"anyOf": choices}
+    if context.get("linked_tests") is True and not any(
+        "properties" in choice for choice in choices
+    ):
+        definitions.pop("LocalToolStep", None)
     if len(canonical(schema)) > 12 * 1024:
         raise RunStopped("budget_exhausted", "Grounded response schema exceeds 12 KiB")
     return schema
