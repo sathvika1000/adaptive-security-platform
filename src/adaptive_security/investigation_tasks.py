@@ -7,7 +7,7 @@ import json
 import os
 from collections import Counter
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypedDict
 
 from pydantic import Field, model_validator
 
@@ -22,6 +22,7 @@ from adaptive_security.investigation_runner import (
     canonical,
 )
 from adaptive_security.investigation_tools import ToolName, ToolRequest, ToolResult
+from adaptive_security.schema_order import SchemaOrder, validate_order
 
 
 class TaskRubric(StrictModel):
@@ -122,6 +123,15 @@ def load_tasks(path: Path, digest: str) -> TaskSuite:
     return TaskSuite.model_validate_json(raw)
 
 
+class TaskOptions(TypedDict, total=False):
+    slow_local: bool
+    structured_requests: bool
+    scoped_requests: bool
+    shared_request_scope: bool
+    linked_tests: bool
+    linked_schema_order: SchemaOrder
+
+
 async def run_tasks(
     suite: TaskSuite,
     model: str | None = None,
@@ -131,9 +141,11 @@ async def run_tasks(
     scoped_requests: bool = False,
     shared_request_scope: bool = False,
     linked_tests: bool = False,
+    linked_schema_order: SchemaOrder = "empty-first",
 ) -> dict[str, object]:
     if slow_local and model is None:
         raise ValueError("Slow local profile requires an Ollama model")
+    validate_order(linked_schema_order, linked_tests=linked_tests)
     suite = suite.model_copy(deep=True)
     rows = []
     statuses: Counter[str] = Counter()
@@ -142,11 +154,17 @@ async def run_tasks(
         if model is not None:
             from adaptive_security.ollama_adapter import OllamaAdapter
 
-            adapter = (
-                OllamaAdapter(model, token_limit=13_824, request_timeout_seconds=85.0)
-                if slow_local
-                else OllamaAdapter(model, token_limit=13_824)
-            )
+            if linked_tests:
+                adapter = OllamaAdapter(
+                    model, token_limit=13_824,
+                    request_timeout_seconds=85.0 if slow_local else 25.0,
+                    linked_schema_order=linked_schema_order,
+                )
+            else:
+                adapter = (
+                    OllamaAdapter(model, token_limit=13_824, request_timeout_seconds=85.0)
+                    if slow_local else OllamaAdapter(model, token_limit=13_824)
+                )
         report = await InvestigationRunner(
             task.grant,
             TaskChannel(task),
@@ -203,6 +221,7 @@ async def run_tasks(
         "suite_semantic_sha256": hashlib.sha256(
             canonical(suite.model_dump(mode="json"))
         ).hexdigest(),
+        "linked_schema_order": linked_schema_order if linked_tests else None,
         "source_sha256": {
             name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
             for name in (
@@ -210,6 +229,7 @@ async def run_tasks(
                 "investigation_runner.py",
                 "ollama_adapter.py",
                 "grounded_schema.py",
+                "schema_order.py",
                 "evidence_requests.py",
                 "request_scope.py",
                 "statement_tests.py",

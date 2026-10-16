@@ -106,3 +106,11 @@ from its alternative, whether unknown context remains explicit, and whether unsu
 order or causation is still being suggested. Successful completion is not semantic approval.
 Automated checks use mocks/deterministic adapters; actual local-model quality needs this fresh
 run and human review. Assisted review is not independent validation or production readiness.
+
+
+## Investigating empty-explanation responses
+
+The consistent-links development run completed all tasks but supplied no explanations or test
+links. See [the schema-order comparison](SCHEMA_ORDER_COMPARISON.md) for a matched-input probe
+using two fresh sessions. Completion and structurally valid empty links do not demonstrate
+useful reasoning. The existing consistent-links session remains an unchanged development record.

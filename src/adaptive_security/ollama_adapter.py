@@ -14,9 +14,11 @@ from adaptive_security.investigation_runner import (
     AdapterUsage,
     Conclusion,
     RunStopped,
+    SchemaRequest,
     ToolStep,
     canonical,
 )
+from adaptive_security.schema_order import SchemaOrder, validate_order
 
 ENDPOINT = "http://127.0.0.1:11434"
 CONTEXT_TOKENS = 4096
@@ -80,6 +82,12 @@ _SYSTEM = (
 )
 
 
+def _request_digest(value: object) -> str:
+    # Preserve mapping order as well as array order in constructed provider schemas.
+    raw = json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()
+    return hashlib.sha256(raw).hexdigest()
+
+
 class OllamaAdapter:
     def __init__(
         self,
@@ -88,6 +96,7 @@ class OllamaAdapter:
         transport: httpx2.AsyncBaseTransport | None = None,
         *,
         request_timeout_seconds: float = 25.0,
+        linked_schema_order: SchemaOrder = "empty-first",
     ) -> None:
         if (
             not re.fullmatch(r"[a-z0-9][a-z0-9._:-]{0,47}", model)
@@ -104,6 +113,8 @@ class OllamaAdapter:
             or not 0 < request_timeout_seconds <= 90
         ):
             raise ValueError("Local request timeout must be finite and at most 90 seconds")
+        validate_order(linked_schema_order)
+        self.linked_schema_order = linked_schema_order
         self.request_timeout_seconds = request_timeout_seconds
         self.model = model
         self.transport = transport
@@ -164,7 +175,10 @@ class OllamaAdapter:
             raise RunStopped("budget_exhausted", "Local model context exceeds 16 KiB")
         if self.stats.charged_tokens + CALL_RESERVATION > self.stats.token_limit:
             raise RunStopped("budget_exhausted", "Model token reservation budget exhausted")
-        schema = grounded_schema(ModelDecision.model_json_schema(), context_json)
+        schema = grounded_schema(
+            ModelDecision.model_json_schema(), context_json,
+            linked_schema_order=self.linked_schema_order,
+        )
         payload = {
             "model": self.model,
             "stream": False,
@@ -254,6 +268,18 @@ class OllamaAdapter:
             if self.stats.metadata_sha256 is not None and self.stats.metadata_sha256 != fingerprint:
                 raise RunStopped("blocked", "Ollama model metadata changed during the run")
             self.stats.metadata_sha256 = fingerprint
+            if json.loads(context_json).get("linked_tests") is True:
+                self.stats.linked_schema_order = self.linked_schema_order
+                normalized = json.loads(json.dumps(schema))
+                branches = normalized["$defs"]["Conclusion"]["anyOf"]
+                branches.sort(key=canonical)
+                self.stats.schema_requests.append(SchemaRequest(
+                    non_format_payload_sha256=_request_digest({
+                        key: value for key, value in payload.items() if key != "format"
+                    }),
+                    format_sha256=_request_digest(schema),
+                    order_normalized_format_sha256=_request_digest(normalized),
+                ))
             # Failed or cancelled generation calls retain their full pre-request reservation.
             self.stats.requests += 1
             self.stats.charged_tokens += CALL_RESERVATION

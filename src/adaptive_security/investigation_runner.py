@@ -69,6 +69,12 @@ class RunBudget(StrictModel):
     operation_seconds: float = Field(default=5.0, gt=0, le=120)
 
 
+class SchemaRequest(StrictModel):
+    non_format_payload_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    format_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    order_normalized_format_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class AdapterUsage(StrictModel):
     model: str = Field(min_length=1, max_length=48)
     requests: int = Field(ge=0)
@@ -78,6 +84,8 @@ class AdapterUsage(StrictModel):
     token_limit: int = Field(ge=0)
     unconfirmed_requests: int = Field(ge=0)
     metadata_sha256: str | None = None
+    linked_schema_order: Literal["empty-first", "populated-first"] | None = None
+    schema_requests: list[SchemaRequest] = Field(default_factory=list, max_length=20)
 
 
 class RunReport(BaseModel):

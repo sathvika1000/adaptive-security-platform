@@ -8,6 +8,7 @@ from adaptive_security.evidence_requests import request_catalog
 from adaptive_security.investigation_runner import RunStopped, canonical
 from adaptive_security.investigation_tools import ToolResult
 from adaptive_security.request_scope import scope_context, scope_digest
+from adaptive_security.schema_order import SchemaOrder, validate_order
 
 FIELDS = ("outcome", "category", "action", "source_ip", "event_time")
 
@@ -96,10 +97,14 @@ def _linked_conclusions(definitions: dict[str, Any], conclusion: dict[str, Any])
     definitions.pop("ObservationClaim", None)
 
 
-def grounded_schema(base: dict[str, object], context_json: str) -> dict[str, object]:
+def grounded_schema(
+    base: dict[str, object], context_json: str, *,
+    linked_schema_order: SchemaOrder = "empty-first",
+) -> dict[str, object]:
     context = json.loads(context_json)
     if not isinstance(context, dict):
         raise ValueError("Invalid controller context")
+    validate_order(linked_schema_order, linked_tests=context.get("linked_tests") is True)
     results = [ToolResult.model_validate(value) for value in context.get("results", [])]
     allowed = context.get("allowed_tools", [])
     if not isinstance(allowed, list) or not all(isinstance(tool, str) for tool in allowed):
@@ -236,6 +241,8 @@ def grounded_schema(base: dict[str, object], context_json: str) -> dict[str, obj
         conclusion["properties"]["disposition"] = {"type": "string", "const": "inconclusive"}
     if context.get("linked_tests") is True and context.get("structured_requests") is True:
         _linked_conclusions(definitions, conclusion)
+        if linked_schema_order == "populated-first":
+            definitions["Conclusion"]["anyOf"].reverse()
     required = context.get("required_tools_remaining", [])
     if not isinstance(required, list) or not all(
         isinstance(tool, str) and tool in allowed for tool in required
