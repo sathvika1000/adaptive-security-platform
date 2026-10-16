@@ -27,6 +27,7 @@ LIMITATIONS = [
     "Advisory worksheet only; statements and returned data remain untrusted.",
     "Citations belong to the whole conclusion; per-statement evidence links were not recorded.",
     "Exact field matches do not establish the truth of a hypothesis or source authenticity.",
+    "Model-declared testing links do not establish semantic relevance, support or test quality.",
     "Unrequested active gaps are candidates for review, not mandatory actions or model errors.",
     "Equal timestamps do not establish order; "
     "distinct timestamps do not prove shared identity or cause.",
@@ -41,6 +42,8 @@ class Statement(StrictModel):
     index: int
     text: str
     citation_linkage: str = "conclusion_level_only"
+    test_linkage: str = "not_recorded"
+    testing_request_indices: list[int] = Field(default_factory=list)
     review_questions: list[str] = Field(default_factory=lambda: list(QUESTIONS))
 
 
@@ -62,6 +65,7 @@ class ReasoningRow(StrictModel):
     requested_gap_ids: list[str]
     unrequested_active_gaps: list[dict[str, str]]
     shared_scope: dict[str, object] | None
+    statement_test_linkage: str
     scope_validation: str
     semantic_review: str = "pending-human-review"
 
@@ -138,6 +142,14 @@ def build_worksheet(report: TaskReport, digest: str) -> Worksheet:
                             section=section,
                             index=index,
                             text=text,
+                            test_linkage=audit["statement_test_linkage"],
+                            testing_request_indices=[
+                                i
+                                for i, request in enumerate(conclusion.evidence_requests)
+                                if f"{section}:{index}" in request.tests
+                            ]
+                            if audit["statement_test_linkage"] == "structural_links_validated"
+                            else [],
                         )
                     )
             for claim in conclusion.observations:
@@ -198,6 +210,7 @@ def build_worksheet(report: TaskReport, digest: str) -> Worksheet:
                 unrequested_active_gaps=unrequested,
                 shared_scope=audit["shared_scope"],
                 scope_validation=audit["request_scope_validation"],
+                statement_test_linkage=audit["statement_test_linkage"],
             )
         )
     return Worksheet(
@@ -212,6 +225,7 @@ def build_worksheet(report: TaskReport, digest: str) -> Worksheet:
                 "evidence_brief.py",
                 "evidence_requests.py",
                 "request_scope.py",
+                "statement_tests.py",
                 "task_review.py",
                 "task_pair.py",
                 "investigation_runner.py",
@@ -229,6 +243,21 @@ def render_html(worksheet: Worksheet) -> str:
     def block(title: str, value: object) -> str:
         return f"<h3>{escape(title)}</h3><pre>{escape(json.dumps(value, indent=2))}</pre>"
 
+    def tests_for(statement: Statement, row: ReasoningRow) -> str:
+        if statement.test_linkage != "structural_links_validated":
+            return "<p>Testing links: " + escape(statement.test_linkage) + "</p>"
+        if not statement.testing_request_indices:
+            return "<p>No testing request is declared for this statement.</p>"
+        return (
+            "<p>Model-declared testing requests (not evidence support):</p><ul>"
+            + "".join(
+                f"<li>Request {index}: "
+                f"{escape(str(row.model_requests[index]['evidence_needed']))}</li>"
+                for index in statement.testing_request_indices
+            )
+            + "</ul>"
+        )
+
     sections = []
     for row in worksheet.tasks:
         statements = (
@@ -236,7 +265,9 @@ def render_html(worksheet: Worksheet) -> str:
                 f"<article><h3>{escape(statement.statement_id)}</h3>"
                 f"<blockquote>{escape(statement.text)}</blockquote><ul>"
                 + "".join(f"<li>{escape(question)}</li>" for question in statement.review_questions)
-                + "</ul></article>"
+                + "</ul>"
+                + tests_for(statement, row)
+                + "</article>"
                 for statement in row.statements
             )
             or "<p>No accepted hypothesis or alternative explanation was recorded.</p>"
@@ -253,6 +284,7 @@ def render_html(worksheet: Worksheet) -> str:
             + "<p>These citations are not mapped to individual statements. Exact matches do not "
             "establish statement truth.</p></section><section><h3>Untrusted model statements</h3>"
             + statements
+            + block("Statement test linkage", row.statement_test_linkage)
             + block("Model collection limitations", row.collection_limits)
             + block("Legacy free-text next checks", row.legacy_next_checks)
             + block("Gap coverage state", row.gap_coverage_state)

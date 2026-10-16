@@ -62,7 +62,8 @@ def test_requests_link_to_current_gaps_without_executing(index):
     assert report.status == "completed" and report.tool_calls == 1
     assert report.structured_requests is True
     assert (
-        report.conclusion.evidence_requests[0].model_dump(exclude={"scope", "scope_ref"}) == REQUEST
+        report.conclusion.evidence_requests[0].model_dump(exclude={"scope", "scope_ref", "tests"})
+        == REQUEST
     )
     assert adapter.contexts[1]["structured_requests"] is True
     assert not any(

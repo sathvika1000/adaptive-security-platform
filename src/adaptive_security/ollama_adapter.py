@@ -196,6 +196,25 @@ class OllamaAdapter:
                         "Unknown scope needs analyst definition. "
                         if json.loads(context_json).get("scoped_requests") is True
                         else ""
+                    )
+                    + (
+                        "Linked tests: use at most one short hypothesis and one short alternative. "
+                        "Keep either or both arrays empty when no useful testable "
+                        "explanation is available; "
+                        "do not restate observations as hypotheses. For each explanation, "
+                        "declare at least "
+                        "one request tests entry using hypotheses:0 or alternative_explanations:0. "
+                        "Each request evidence_needed should name evidence and a possible "
+                        "result that "
+                        "would distinguish or weaken its linked explanations. Requests "
+                        "may test both. "
+                        "Use tests:[] for supplementary requests or when there are no "
+                        "explanations. "
+                        "Explanations remain unverified. Equal timestamps do not "
+                        "establish order, and "
+                        "outcomes alone do not establish causes. These links do not prove support. "
+                        if json.loads(context_json).get("linked_tests") is True
+                        else ""
                     ),
                 },
                 {"role": "user", "content": context_json},

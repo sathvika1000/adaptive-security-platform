@@ -16,6 +16,7 @@ from adaptive_security.evidence_requests import (
 )
 from adaptive_security.investigation_runner import StrictModel, canonical
 from adaptive_security.request_scope import RequestScope
+from adaptive_security.statement_tests import statement_inventory, validate_statement_tests
 from adaptive_security.task_audit import accepted_results
 from adaptive_security.task_pair import saved_report
 from adaptive_security.task_review import (
@@ -57,6 +58,7 @@ class RequestReview(StrictModel):
     report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     suite_semantic_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     reviewer: str = Field(default="", max_length=128)
+    statement_contexts: dict[str, dict[str, str]] = Field(default_factory=dict, max_length=10)
     shared_scopes: dict[str, RequestScope] = Field(default_factory=dict, max_length=10)
     assessments: list[RequestAssessment] = Field(min_length=1, max_length=30)
 
@@ -64,6 +66,7 @@ class RequestReview(StrictModel):
 def prepare(report: TaskReport, digest: str) -> RequestReview:
     rows = []
     shared_scopes = {}
+    statement_contexts = {}
     for task in report.tasks:
         conclusion = task.run.conclusion
         if conclusion is None:
@@ -85,6 +88,19 @@ def prepare(report: TaskReport, digest: str) -> RequestReview:
             if task.run.run_id in shared_scopes:
                 raise ValueError("Duplicate shared-scope run ID")
             shared_scopes[task.run.run_id] = task.run.shared_scope.model_copy(deep=True)
+        validate_statement_tests(
+            conclusion.hypotheses,
+            conclusion.alternative_explanations,
+            [request.tests for request in conclusion.evidence_requests],
+            required=task.run.linked_tests,
+            evidence_goals=[request.evidence_needed for request in conclusion.evidence_requests],
+        )
+        if task.run.linked_tests or any(request.tests for request in conclusion.evidence_requests):
+            if task.run.run_id in statement_contexts:
+                raise ValueError("Duplicate statement-context run ID")
+            statement_contexts[task.run.run_id] = statement_inventory(
+                conclusion.hypotheses, conclusion.alternative_explanations
+            )
         gaps = {gap["gap_id"]: gap for gap in request_catalog(results)}
         for index, request in enumerate(conclusion.evidence_requests):
             rows.append(
@@ -105,6 +121,7 @@ def prepare(report: TaskReport, digest: str) -> RequestReview:
         suite_semantic_sha256=report.suite_semantic_sha256,
         assessments=rows,
         shared_scopes=shared_scopes,
+        statement_contexts=statement_contexts,
     )
 
 
@@ -118,6 +135,9 @@ def summarize(report: TaskReport, digest: str, review: RequestReview) -> dict[st
 
     if review.shared_scopes != expected.shared_scopes:
         raise ValueError("Review shared scopes differ from accepted report context")
+
+    if review.statement_contexts != expected.statement_contexts:
+        raise ValueError("Review statement context differs from original explanations")
 
     def identity(row: RequestAssessment) -> bytes:
         data = row.model_dump(include=set(IDENTITY_FIELDS))
@@ -148,6 +168,7 @@ def summarize(report: TaskReport, digest: str, review: RequestReview) -> dict[st
         "suite_semantic_sha256": report.suite_semantic_sha256,
         "reviewer": review.reviewer,
         "requests_reviewed": len(identities),
+        "statement_contexts": review.statement_contexts,
         "shared_scopes": {
             key: value.model_dump(mode="json") for key, value in review.shared_scopes.items()
         },
@@ -170,6 +191,7 @@ def summarize(report: TaskReport, digest: str, review: RequestReview) -> dict[st
                 "request_review.py",
                 "evidence_requests.py",
                 "request_scope.py",
+                "statement_tests.py",
                 "evidence_brief.py",
                 "task_audit.py",
             )

@@ -10,6 +10,7 @@ from adaptive_security.evidence_brief import build_brief
 from adaptive_security.evidence_requests import validate_requests
 from adaptive_security.investigation_runner import RunReport, canonical
 from adaptive_security.investigation_tools import ToolResult
+from adaptive_security.statement_tests import statement_inventory, validate_statement_tests
 from adaptive_security.task_pair import saved_report
 from adaptive_security.task_review import TaskReport, load_report, write_private
 
@@ -116,6 +117,30 @@ def audit_report(report: TaskReport, digest: str) -> dict[str, object]:
                 and linkage == "active_gap_source_links_validated"
                 else "missing_or_invalid_shared_scope"
             )
+        test_linkage = "not_recorded"
+        inventory = {}
+        if conclusion:
+            inventory = statement_inventory(
+                conclusion.hypotheses, conclusion.alternative_explanations
+            )
+            if task.run.linked_tests or any(
+                request.tests for request in conclusion.evidence_requests
+            ):
+                try:
+                    validate_statement_tests(
+                        conclusion.hypotheses,
+                        conclusion.alternative_explanations,
+                        [request.tests for request in conclusion.evidence_requests],
+                        required=task.run.linked_tests,
+                        evidence_goals=[
+                            request.evidence_needed for request in conclusion.evidence_requests
+                        ],
+                    )
+                    test_linkage = "structural_links_validated"
+                except ValueError:
+                    test_linkage = "invalid_statement_test_links"
+        elif task.run.linked_tests:
+            test_linkage = "no_accepted_conclusion"
         rows.append(
             {
                 "task_id": task.task_id,
@@ -134,6 +159,9 @@ def audit_report(report: TaskReport, digest: str) -> dict[str, object]:
                 if task.run.shared_scope
                 else None,
                 "request_scope_validation": scope_state,
+                "statement_test_linkage": test_linkage,
+                "statement_inventory": inventory,
+                "linked_tests": task.run.linked_tests,
                 "semantic_review": "pending-human-review",
             }
         )
@@ -149,6 +177,7 @@ def audit_report(report: TaskReport, digest: str) -> dict[str, object]:
                 "evidence_brief.py",
                 "evidence_requests.py",
                 "request_scope.py",
+                "statement_tests.py",
             )
         },
         "task_count": len(rows),
@@ -159,6 +188,7 @@ def audit_report(report: TaskReport, digest: str) -> dict[str, object]:
             "No flags does not establish useful planning or an evidence-supported hypothesis.",
             "Gaps and source suggestions are application rules needing analyst judgment.",
             "Structured links do not verify request wording, source existence or permission.",
+            "Statement test links identify proposed tests, not evidential support or test quality.",
             "No model, live source or response action is called; semantic review remains pending.",
         ],
     }
