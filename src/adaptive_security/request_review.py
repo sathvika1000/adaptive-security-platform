@@ -8,7 +8,12 @@ from typing import Literal
 
 from pydantic import Field
 
-from adaptive_security.evidence_requests import EvidenceRequest, request_catalog, validate_requests
+from adaptive_security.evidence_requests import (
+    EvidenceRequest,
+    request_catalog,
+    request_payload,
+    validate_requests,
+)
 from adaptive_security.investigation_runner import StrictModel, canonical
 from adaptive_security.task_audit import accepted_results
 from adaptive_security.task_pair import saved_report
@@ -71,7 +76,7 @@ def prepare(report: TaskReport, digest: str) -> RequestReview:
                     task_id=task.task_id,
                     run_id=task.run.run_id,
                     request_index=index,
-                    request_sha256=hashlib.sha256(canonical(request.model_dump())).hexdigest(),
+                    request_sha256=hashlib.sha256(canonical(request_payload(request))).hexdigest(),
                     request=request.model_copy(deep=True),
                     objective=task.objective,
                     gap_basis=gaps[request.gap_id]["basis"],
@@ -93,7 +98,9 @@ def summarize(report: TaskReport, digest: str, review: RequestReview) -> dict[st
         raise ValueError("Review is bound to a different report")
 
     def identity(row: RequestAssessment) -> bytes:
-        return canonical(row.model_dump(include=set(IDENTITY_FIELDS)))
+        data = row.model_dump(include=set(IDENTITY_FIELDS))
+        data["request"] = request_payload(row.request)
+        return canonical(data)
 
     identities = [identity(row) for row in review.assessments]
     if len(set(identities)) != len(identities) or set(identities) != {
@@ -137,6 +144,7 @@ def summarize(report: TaskReport, digest: str, review: RequestReview) -> dict[st
             for name in (
                 "request_review.py",
                 "evidence_requests.py",
+                "request_scope.py",
                 "evidence_brief.py",
                 "task_audit.py",
             )

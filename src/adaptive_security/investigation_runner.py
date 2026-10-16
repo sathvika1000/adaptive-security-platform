@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Annotated, Literal, Protocol
+from typing import Annotated, Literal, Protocol, cast
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 from adaptive_security.evidence_requests import EvidenceRequest, request_catalog, validate_requests
 from adaptive_security.investigation_access import InvestigationGrant
 from adaptive_security.investigation_tools import EvidenceRecord, ToolName, ToolRequest, ToolResult
+from adaptive_security.request_scope import scope_context
 
 
 class StrictModel(BaseModel):
@@ -91,6 +92,7 @@ class RunReport(BaseModel):
     evidence_bytes: int
     journal: list[dict[str, object]]
     proposals: list[dict[str, object]] = Field(default_factory=list)
+    scoped_requests: bool = False
     structured_requests: bool = False
     required_tools: list[ToolName] = Field(default_factory=list)
     conclusion: Conclusion | None = None
@@ -127,13 +129,15 @@ class InvestigationRunner:
         adapter_name: str = "custom-adapter",
         required_tools: tuple[ToolName, ...] = (),
         structured_requests: bool = False,
+        scoped_requests: bool = False,
     ) -> None:
         self.grant = grant.model_copy(deep=True)
         self.channel = channel
         self.adapter = adapter
         self.budget = budget or RunBudget()
         self.adapter_name = adapter_name
-        self.structured_requests = structured_requests
+        self.scoped_requests = scoped_requests
+        self.structured_requests = structured_requests or scoped_requests
         self.required_tools = tuple(dict.fromkeys(required_tools))
         if any(tool not in self.grant.tools for tool in self.required_tools):
             raise ValueError("Required tools must be granted")
@@ -159,6 +163,7 @@ class InvestigationRunner:
             journal=[],
             required_tools=list(self.required_tools),
             structured_requests=self.structured_requests,
+            scoped_requests=self.scoped_requests,
         )
         results: list[ToolResult] = []
         records: dict[tuple[str, str], EvidenceRecord] = {}
@@ -183,6 +188,11 @@ class InvestigationRunner:
                     if self.structured_requests:
                         context_data["structured_requests"] = True
                         context_data["evidence_gaps"] = request_catalog(results)
+                    if self.scoped_requests:
+                        context_data["scoped_requests"] = True
+                        context_data["request_scope"] = scope_context(results).model_dump(
+                            mode="json"
+                        )
                     context = canonical(context_data).decode()
                     raw = await asyncio.wait_for(
                         self.adapter.next_step(context), self.budget.operation_seconds
@@ -204,6 +214,10 @@ class InvestigationRunner:
                             validate_requests(decision.evidence_requests, results)
                         except ValueError as exc:
                             raise RunStopped("blocked", str(exc)) from exc
+                        if self.scoped_requests and any(
+                            request.scope is None for request in decision.evidence_requests
+                        ):
+                            raise RunStopped("blocked", "Explicit request scope required")
                         if self.structured_requests and (
                             not decision.evidence_requests or decision.next_checks
                         ):
@@ -405,4 +419,7 @@ class EvidenceReviewAdapter:
                 }
                 for gap in context["evidence_gaps"][:2]
             ]
+        if context.get("scoped_requests"):
+            for request in cast(list[dict[str, object]], answer["evidence_requests"]):
+                request["scope"] = context["request_scope"]
         return answer

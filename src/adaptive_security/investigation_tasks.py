@@ -128,6 +128,7 @@ async def run_tasks(
     *,
     slow_local: bool = False,
     structured_requests: bool = False,
+    scoped_requests: bool = False,
 ) -> dict[str, object]:
     if slow_local and model is None:
         raise ValueError("Slow local profile requires an Ollama model")
@@ -157,6 +158,7 @@ async def run_tasks(
             adapter_name="deterministic-task-smoke" if model is None else "ollama-local-task",
             required_tools=("get_finding_evidence",),
             structured_requests=structured_requests,
+            scoped_requests=scoped_requests,
         ).run()
         actual = report.conclusion
         observed = (
@@ -205,6 +207,7 @@ async def run_tasks(
                 "ollama_adapter.py",
                 "grounded_schema.py",
                 "evidence_requests.py",
+                "request_scope.py",
                 "evidence_brief.py",
                 "investigation_tools.py",
             )

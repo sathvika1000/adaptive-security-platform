@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from adaptive_security.evidence_brief import build_brief
 from adaptive_security.investigation_tools import ToolResult
+from adaptive_security.request_scope import RequestScope, validate_scope
 
 
 class EvidenceRequest(BaseModel):
@@ -26,6 +27,7 @@ class EvidenceRequest(BaseModel):
         "authentication_details",
         "session_correlation",
     ]
+    scope: RequestScope | None = None
     evidence_needed: str = Field(min_length=8, max_length=256)
 
     @field_validator("evidence_needed")
@@ -54,3 +56,10 @@ def validate_requests(requests: list[EvidenceRequest], results: list[ToolResult]
         if key in seen:
             raise ValueError("Duplicate evidence request")
         seen.add(key)
+        if request.scope is not None:
+            validate_scope(request.scope, results)
+
+
+def request_payload(request: EvidenceRequest) -> dict[str, object]:
+    # Preserve canonical hashes of requests saved before scope fields existed.
+    return request.model_dump(mode="json", exclude={"scope"} if request.scope is None else set())
