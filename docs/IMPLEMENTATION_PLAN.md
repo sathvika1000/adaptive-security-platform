@@ -307,3 +307,13 @@ populated slots, preserving empty explanations and all independent controller ch
 inference budgets, archived runs and review identities unchanged. Regression checks cover all
 five tasks and four explanation combinations, plus provider-bypass rejection. A fresh Mac run
 is required to assess actual Ollama behavior; completion does not establish reasoning quality.
+
+
+### Paired conclusion-schema order probe
+
+The consistent-links development run completed all tasks but emitted no explanations or
+nonempty test links. Test the order-sensitivity hypothesis with two fresh neutral linked-test
+sessions, reversing only the four Conclusion.anyOf branches. Record actual schema and
+non-format payload hashes, independent controller validation and comparison mismatches.
+Preserve old runs and all budgets; no theory is forced and no semantic winner is assigned.
+See `SCHEMA_ORDER_COMPARISON.md` for fresh Mac runs and separate human review requirements.

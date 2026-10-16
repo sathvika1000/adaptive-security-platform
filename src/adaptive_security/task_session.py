@@ -7,7 +7,8 @@ import os
 from importlib.resources import files
 from pathlib import Path
 
-from adaptive_security.investigation_tasks import TaskSuite, run_tasks
+from adaptive_security.investigation_tasks import TaskOptions, TaskSuite, run_tasks
+from adaptive_security.schema_order import SchemaOrder, validate_order
 from adaptive_security.task_review import TaskReport, prepare, write_private
 
 SUITE_SHA256 = "0d7d919ead8f04304204fa3e4fd821b2afb3cd19a767f6d1a6f8ad98a003ad12"
@@ -47,9 +48,11 @@ async def create_session(
     scoped_requests: bool = False,
     shared_request_scope: bool = False,
     linked_tests: bool = False,
+    linked_schema_order: SchemaOrder = "empty-first",
 ) -> bool:
     if slow_local and model is None:
         raise ValueError("Slow local profile requires an Ollama model")
+    validate_order(linked_schema_order, linked_tests=linked_tests)
     shared_request_scope = shared_request_scope or linked_tests
     scoped_requests = scoped_requests or shared_request_scope
     structured_requests = structured_requests or scoped_requests
@@ -77,6 +80,7 @@ async def create_session(
             "scoped_requests": scoped_requests,
             "shared_request_scope": shared_request_scope,
             "linked_tests": linked_tests,
+            "linked_schema_order": linked_schema_order if linked_tests else None,
             "state": "started-not-complete",
         },
     )
@@ -85,7 +89,7 @@ async def create_session(
         descriptor = os.open(directory / "suite.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(raw)
-        options = {}
+        options: TaskOptions = {}
         if slow_local:
             options["slow_local"] = True
         if structured_requests:
@@ -96,6 +100,8 @@ async def create_session(
             options["shared_request_scope"] = True
         if linked_tests:
             options["linked_tests"] = True
+        if linked_schema_order != "empty-first":
+            options["linked_schema_order"] = linked_schema_order
         report = await run_tasks(suite, model, **options)
         report["suite_file_sha256"] = suite_digest
         parsed = TaskReport.model_validate(report)
@@ -122,6 +128,7 @@ async def create_session(
                 "scoped_requests": scoped_requests,
                 "shared_request_scope": shared_request_scope,
                 "linked_tests": linked_tests,
+                "linked_schema_order": linked_schema_order if linked_tests else None,
                 "bundled_suite_sha256": suite_digest,
                 "artifact_sha256": artifacts,
                 "run_summary": report["summary"],
@@ -163,17 +170,22 @@ def main() -> int:
     mode.add_argument("--ollama-model")
     mode.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
+    options = TaskOptions(
+        slow_local=args.slow_local, structured_requests=args.structured_requests,
+    )
+    if args.scoped_requests:
+        options["scoped_requests"] = True
+    if args.shared_request_scope:
+        options["shared_request_scope"] = True
+    if args.linked_tests:
+        options["linked_tests"] = True
     try:
         completed = asyncio.run(
             create_session(
                 args.directory,
                 args.ollama_model,
-                slow_local=args.slow_local,
                 suite_version=args.suite_version,
-                structured_requests=args.structured_requests,
-                **({"scoped_requests": True} if args.scoped_requests else {}),
-                **({"shared_request_scope": True} if args.shared_request_scope else {}),
-                **({"linked_tests": True} if args.linked_tests else {}),
+                **options,
             )
         )
     except (OSError, ValueError, RuntimeError, ImportError):
