@@ -112,3 +112,7 @@ Do not grade label avoidance itself as good reasoning or infer injection resista
 correct outcome citations. Filled answer fields, matching draft dispositions and exact
 citations remain distinct from semantic support. No aggregate accuracy or model winner
 is generated.
+
+Existing arm reports can also receive a separate [deterministic evidence audit](EVIDENCE_AUDIT.md)
+without rerunning either model. It generates returned-fact and gap catalogs and flags
+narrow next-check problems while keeping semantic review pending.
