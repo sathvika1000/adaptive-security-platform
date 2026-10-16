@@ -256,3 +256,11 @@ current deterministic gaps to matching evidence-source categories. The controlle
 links independently of provider schema guidance; the offline audit rechecks journal evidence.
 Requests remain unexecuted analyst proposals. Actual local-model evaluation and human semantic
 review are the next validation step; see `STRUCTURED_EVIDENCE_REQUESTS.md`.
+
+### Human review of individual evidence requests
+
+Added separate prepare/summarize commands for relevance, specificity and potential gap
+resolution. Each assessment binds exact request content, index, task/run IDs and copied context
+to the pinned original report. Summaries require complete ratings and notes, retain zero-request
+tasks and not-assessable counts, and assign no quality score. Original runs and reviews remain
+unchanged; see `EVIDENCE_REQUEST_REVIEW.md`. Omitted gaps need separate analyst attention.
