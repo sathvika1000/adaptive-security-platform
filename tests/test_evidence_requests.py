@@ -61,7 +61,9 @@ def test_requests_link_to_current_gaps_without_executing(index):
     report, adapter = run([REQUEST], index=index)
     assert report.status == "completed" and report.tool_calls == 1
     assert report.structured_requests is True
-    assert report.conclusion.evidence_requests[0].model_dump(exclude={"scope"}) == REQUEST
+    assert (
+        report.conclusion.evidence_requests[0].model_dump(exclude={"scope", "scope_ref"}) == REQUEST
+    )
     assert adapter.contexts[1]["structured_requests"] is True
     assert not any(
         g["gap_id"] == "event_evidence_unread" for g in adapter.contexts[1]["evidence_gaps"]

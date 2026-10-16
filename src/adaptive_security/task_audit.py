@@ -85,7 +85,7 @@ def audit_report(report: TaskReport, digest: str) -> dict[str, object]:
         linkage = "not_encoded_in_legacy_free_text"
         if conclusion and conclusion.evidence_requests:
             try:
-                validate_requests(conclusion.evidence_requests, results)
+                validate_requests(conclusion.evidence_requests, results, task.run.shared_scope)
                 linkage = "active_gap_source_links_validated"
             except ValueError:
                 linkage = "invalid_gap_source_links"
@@ -106,6 +106,16 @@ def audit_report(report: TaskReport, digest: str) -> dict[str, object]:
             or any(request.scope is None for request in conclusion.evidence_requests)
         ):
             scope_state = "missing_required_scope"
+        if task.run.shared_request_scope:
+            scope_state = (
+                "validated_shared_context"
+                if conclusion
+                and conclusion.evidence_requests
+                and task.run.shared_scope is not None
+                and all(request.scope_ref is not None for request in conclusion.evidence_requests)
+                and linkage == "active_gap_source_links_validated"
+                else "missing_or_invalid_shared_scope"
+            )
         rows.append(
             {
                 "task_id": task.task_id,
@@ -119,6 +129,10 @@ def audit_report(report: TaskReport, digest: str) -> dict[str, object]:
                 "next_check_gap_linkage": linkage,
                 "structured_requests": task.run.structured_requests,
                 "scoped_requests": task.run.scoped_requests,
+                "shared_request_scope": task.run.shared_request_scope,
+                "shared_scope": task.run.shared_scope.model_dump(mode="json")
+                if task.run.shared_scope
+                else None,
                 "request_scope_validation": scope_state,
                 "semantic_review": "pending-human-review",
             }

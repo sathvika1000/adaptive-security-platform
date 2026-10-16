@@ -15,6 +15,7 @@ from adaptive_security.evidence_requests import (
     validate_requests,
 )
 from adaptive_security.investigation_runner import StrictModel, canonical
+from adaptive_security.request_scope import RequestScope
 from adaptive_security.task_audit import accepted_results
 from adaptive_security.task_pair import saved_report
 from adaptive_security.task_review import (
@@ -56,11 +57,13 @@ class RequestReview(StrictModel):
     report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     suite_semantic_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     reviewer: str = Field(default="", max_length=128)
+    shared_scopes: dict[str, RequestScope] = Field(default_factory=dict, max_length=10)
     assessments: list[RequestAssessment] = Field(min_length=1, max_length=30)
 
 
 def prepare(report: TaskReport, digest: str) -> RequestReview:
     rows = []
+    shared_scopes = {}
     for task in report.tasks:
         conclusion = task.run.conclusion
         if conclusion is None:
@@ -68,7 +71,20 @@ def prepare(report: TaskReport, digest: str) -> RequestReview:
         if task.run.status != "completed":
             raise ValueError("Only completed conclusions can contain accepted requests")
         results = accepted_results(task.run)
-        validate_requests(conclusion.evidence_requests, results)
+        validate_requests(conclusion.evidence_requests, results, task.run.shared_scope)
+        if (
+            task.run.shared_request_scope
+            and conclusion.evidence_requests
+            and (
+                task.run.shared_scope is None
+                or any(request.scope_ref is None for request in conclusion.evidence_requests)
+            )
+        ):
+            raise ValueError("Missing required shared scope or reference")
+        if task.run.shared_scope is not None and conclusion.evidence_requests:
+            if task.run.run_id in shared_scopes:
+                raise ValueError("Duplicate shared-scope run ID")
+            shared_scopes[task.run.run_id] = task.run.shared_scope.model_copy(deep=True)
         gaps = {gap["gap_id"]: gap for gap in request_catalog(results)}
         for index, request in enumerate(conclusion.evidence_requests):
             rows.append(
@@ -85,7 +101,10 @@ def prepare(report: TaskReport, digest: str) -> RequestReview:
     if not rows:
         raise ValueError("Report contains no accepted evidence requests to review")
     return RequestReview(
-        report_sha256=digest, suite_semantic_sha256=report.suite_semantic_sha256, assessments=rows
+        report_sha256=digest,
+        suite_semantic_sha256=report.suite_semantic_sha256,
+        assessments=rows,
+        shared_scopes=shared_scopes,
     )
 
 
@@ -96,6 +115,9 @@ def summarize(report: TaskReport, digest: str, review: RequestReview) -> dict[st
         or review.suite_semantic_sha256 != expected.suite_semantic_sha256
     ):
         raise ValueError("Review is bound to a different report")
+
+    if review.shared_scopes != expected.shared_scopes:
+        raise ValueError("Review shared scopes differ from accepted report context")
 
     def identity(row: RequestAssessment) -> bytes:
         data = row.model_dump(include=set(IDENTITY_FIELDS))
@@ -126,6 +148,9 @@ def summarize(report: TaskReport, digest: str, review: RequestReview) -> dict[st
         "suite_semantic_sha256": report.suite_semantic_sha256,
         "reviewer": review.reviewer,
         "requests_reviewed": len(identities),
+        "shared_scopes": {
+            key: value.model_dump(mode="json") for key, value in review.shared_scopes.items()
+        },
         "ratings": {dimension: dict(count) for dimension, count in counts.items()},
         "assessments": [row.model_dump(mode="json") for row in review.assessments],
         "task_inventory": [

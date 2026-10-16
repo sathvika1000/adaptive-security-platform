@@ -1,5 +1,7 @@
 """Exact returned-record context; collection scope still requires analyst definition."""
 
+import hashlib
+import json
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -62,3 +64,10 @@ def validate_scope(scope: RequestScope, results: list[ToolResult]) -> None:
     wanted = {(ref.source, ref.event_id, ref.event_time) for ref in expected.event_references}
     if len(keys) != len(set(keys)) or set(keys) != wanted:
         raise ValueError("Request scope must match all returned event references and timestamps")
+
+
+def scope_digest(scope: RequestScope) -> str:
+    body = json.dumps(
+        scope.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode()
+    return hashlib.sha256(body).hexdigest()

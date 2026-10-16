@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 from adaptive_security.evidence_requests import EvidenceRequest, request_catalog, validate_requests
 from adaptive_security.investigation_access import InvestigationGrant
 from adaptive_security.investigation_tools import EvidenceRecord, ToolName, ToolRequest, ToolResult
-from adaptive_security.request_scope import scope_context
+from adaptive_security.request_scope import RequestScope, scope_context, scope_digest
 
 
 class StrictModel(BaseModel):
@@ -92,6 +92,8 @@ class RunReport(BaseModel):
     evidence_bytes: int
     journal: list[dict[str, object]]
     proposals: list[dict[str, object]] = Field(default_factory=list)
+    shared_request_scope: bool = False
+    shared_scope: RequestScope | None = None
     scoped_requests: bool = False
     structured_requests: bool = False
     required_tools: list[ToolName] = Field(default_factory=list)
@@ -130,14 +132,16 @@ class InvestigationRunner:
         required_tools: tuple[ToolName, ...] = (),
         structured_requests: bool = False,
         scoped_requests: bool = False,
+        shared_request_scope: bool = False,
     ) -> None:
         self.grant = grant.model_copy(deep=True)
         self.channel = channel
         self.adapter = adapter
         self.budget = budget or RunBudget()
         self.adapter_name = adapter_name
-        self.scoped_requests = scoped_requests
-        self.structured_requests = structured_requests or scoped_requests
+        self.shared_request_scope = shared_request_scope
+        self.scoped_requests = scoped_requests or shared_request_scope
+        self.structured_requests = structured_requests or self.scoped_requests
         self.required_tools = tuple(dict.fromkeys(required_tools))
         if any(tool not in self.grant.tools for tool in self.required_tools):
             raise ValueError("Required tools must be granted")
@@ -164,6 +168,7 @@ class InvestigationRunner:
             required_tools=list(self.required_tools),
             structured_requests=self.structured_requests,
             scoped_requests=self.scoped_requests,
+            shared_request_scope=self.shared_request_scope,
         )
         results: list[ToolResult] = []
         records: dict[tuple[str, str], EvidenceRecord] = {}
@@ -193,6 +198,9 @@ class InvestigationRunner:
                         context_data["request_scope"] = scope_context(results).model_dump(
                             mode="json"
                         )
+                    if self.shared_request_scope:
+                        context_data["shared_request_scope"] = True
+                        context_data["request_scope_ref"] = scope_digest(scope_context(results))
                     context = canonical(context_data).decode()
                     raw = await asyncio.wait_for(
                         self.adapter.next_step(context), self.budget.operation_seconds
@@ -211,11 +219,21 @@ class InvestigationRunner:
                         if required_remaining:
                             raise RunStopped("blocked", "Required evidence read not completed")
                         try:
-                            validate_requests(decision.evidence_requests, results)
+                            validate_requests(
+                                decision.evidence_requests,
+                                results,
+                                scope_context(results) if self.shared_request_scope else None,
+                            )
                         except ValueError as exc:
                             raise RunStopped("blocked", str(exc)) from exc
-                        if self.scoped_requests and any(
-                            request.scope is None for request in decision.evidence_requests
+                        if self.shared_request_scope and any(
+                            request.scope_ref is None for request in decision.evidence_requests
+                        ):
+                            raise RunStopped("blocked", "Shared request scope reference required")
+                        if (
+                            self.scoped_requests
+                            and not self.shared_request_scope
+                            and any(request.scope is None for request in decision.evidence_requests)
                         ):
                             raise RunStopped("blocked", "Explicit request scope required")
                         if self.structured_requests and (
@@ -248,6 +266,8 @@ class InvestigationRunner:
                                 raise RunStopped(
                                     "blocked", "Citation does not match a returned observation"
                                 )
+                        if self.shared_request_scope:
+                            report.shared_scope = scope_context(results)
                         report.conclusion = decision
                         report.status, report.detail = (
                             "completed",
@@ -419,7 +439,10 @@ class EvidenceReviewAdapter:
                 }
                 for gap in context["evidence_gaps"][:2]
             ]
-        if context.get("scoped_requests"):
+        if context.get("shared_request_scope"):
+            for request in cast(list[dict[str, object]], answer["evidence_requests"]):
+                request["scope_ref"] = context["request_scope_ref"]
+        elif context.get("scoped_requests"):
             for request in cast(list[dict[str, object]], answer["evidence_requests"]):
                 request["scope"] = context["request_scope"]
         return answer
