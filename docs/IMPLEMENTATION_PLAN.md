@@ -280,3 +280,11 @@ outcome task was truncated. Each request references a digest of current controll
 context; reports store the full scope once. Controller, audit and human review validate both
 reference and resolved context. Existing budgets and earlier provider profiles are unchanged.
 See `SHARED_REQUEST_SCOPE.md`; actual local-model completion and semantic quality need review.
+
+### Offline worksheet for reasoning and request coverage
+
+Added a self-contained HTML/JSON view of existing pinned analyst-task reports. It displays
+verbatim hypotheses and alternatives beside returned assertions, exact conclusion-level citation
+checks and recorded timestamp groups. Valid structured requests are compared with active gaps
+without assuming every unrequested gap is an error. The view does not infer per-statement
+support, score semantics, call a model or change saved reviews. See `REASONING_WORKSHEET.md`.
