@@ -105,3 +105,12 @@ model nondeterminism and five synthetic cases limit causal interpretation even w
 request hashes. One pair cannot prove an order effect or identify the best production format.
 No winner or semantic score is assigned automatically. `--smoke` exercises file plumbing and
 checks only; it bypasses model/schema sampling and cannot test order sensitivity.
+
+
+## Follow-up on supplied catalog wording
+
+The initial Mac pair completed all tasks in both arms with identical accepted conclusions and
+no explanations or test links. Request goals repeated ready-written catalog suggestions. See
+[the catalog-suggestion probe](CATALOG_SUGGESTION_COMPARISON.md) for a fresh comparison that
+removes only those model-facing suggestion fields while holding schema order fixed. The
+initial pair remains an unchanged development observation, not proof of order insensitivity.

@@ -10,6 +10,7 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
+from adaptive_security.catalog_context import CatalogPresentation
 from adaptive_security.investigation_runner import RunReport, StrictModel
 from adaptive_security.investigation_tasks import TaskRubric
 from adaptive_security.schema_order import SchemaOrder
@@ -48,6 +49,7 @@ class TaskReport(StrictModel):
     suite_semantic_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     suite_file_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     linked_schema_order: SchemaOrder | None = None
+    catalog_presentation: CatalogPresentation | None = None
     source_sha256: dict[str, str]
     summary: dict[str, object]
     tasks: list[TaskRun] = Field(min_length=1, max_length=10)

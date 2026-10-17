@@ -317,3 +317,13 @@ sessions, reversing only the four Conclusion.anyOf branches. Record actual schem
 non-format payload hashes, independent controller validation and comparison mismatches.
 Preserve old runs and all budgets; no theory is forced and no semantic winner is assigned.
 See `SCHEMA_ORDER_COMPARISON.md` for fresh Mac runs and separate human review requirements.
+
+
+### Catalog-suggestion presentation probe
+
+The completed schema-order pair retained empty explanations and repeated catalog request text.
+Compare two fresh neutral linked-test sessions with and without the model-facing catalog's
+ready-written evidence_needed sentences. Keep descriptions, IDs, sources, schemas, prompts
+outside those fields, and controller checks fixed. Record normalized payload hashes, actual
+presentation metadata, complete accepted answers and exact wording overlap without grading
+quality. See `CATALOG_SUGGESTION_COMPARISON.md`; old runs remain unchanged.
