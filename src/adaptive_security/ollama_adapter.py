@@ -9,6 +9,12 @@ from typing import Annotated
 import httpx2
 from pydantic import BaseModel, ConfigDict, Field
 
+from adaptive_security.catalog_context import (
+    CatalogPresentation,
+    catalog_context,
+    normalized_catalog_payload,
+    validate_catalog,
+)
 from adaptive_security.grounded_schema import grounded_schema
 from adaptive_security.investigation_runner import (
     AdapterUsage,
@@ -97,6 +103,7 @@ class OllamaAdapter:
         *,
         request_timeout_seconds: float = 25.0,
         linked_schema_order: SchemaOrder = "empty-first",
+        catalog_presentation: CatalogPresentation = "suggestions",
     ) -> None:
         if (
             not re.fullmatch(r"[a-z0-9][a-z0-9._:-]{0,47}", model)
@@ -115,6 +122,8 @@ class OllamaAdapter:
             raise ValueError("Local request timeout must be finite and at most 90 seconds")
         validate_order(linked_schema_order)
         self.linked_schema_order = linked_schema_order
+        validate_catalog(catalog_presentation)
+        self.catalog_presentation = catalog_presentation
         self.request_timeout_seconds = request_timeout_seconds
         self.model = model
         self.transport = transport
@@ -179,6 +188,7 @@ class OllamaAdapter:
             ModelDecision.model_json_schema(), context_json,
             linked_schema_order=self.linked_schema_order,
         )
+        model_context = catalog_context(context_json, self.catalog_presentation)
         payload = {
             "model": self.model,
             "stream": False,
@@ -231,7 +241,7 @@ class OllamaAdapter:
                         else ""
                     ),
                 },
-                {"role": "user", "content": context_json},
+                {"role": "user", "content": model_context},
             ],
             "options": {"temperature": 0, "num_ctx": CONTEXT_TOKENS, "num_predict": OUTPUT_TOKENS},
         }
@@ -270,12 +280,17 @@ class OllamaAdapter:
             self.stats.metadata_sha256 = fingerprint
             if json.loads(context_json).get("linked_tests") is True:
                 self.stats.linked_schema_order = self.linked_schema_order
+                self.stats.catalog_presentation = self.catalog_presentation
                 normalized = json.loads(json.dumps(schema))
                 branches = normalized["$defs"]["Conclusion"]["anyOf"]
                 branches.sort(key=canonical)
                 self.stats.schema_requests.append(SchemaRequest(
                     non_format_payload_sha256=_request_digest({
                         key: value for key, value in payload.items() if key != "format"
+                    }),
+                    catalog_normalized_payload_sha256=_request_digest({
+                        key: value for key, value in normalized_catalog_payload(payload).items()
+                        if key != "format"
                     }),
                     format_sha256=_request_digest(schema),
                     order_normalized_format_sha256=_request_digest(normalized),

@@ -73,6 +73,9 @@ class SchemaRequest(StrictModel):
     non_format_payload_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     format_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     order_normalized_format_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_normalized_payload_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$",
+    )
 
 
 class AdapterUsage(StrictModel):
@@ -85,6 +88,7 @@ class AdapterUsage(StrictModel):
     unconfirmed_requests: int = Field(ge=0)
     metadata_sha256: str | None = None
     linked_schema_order: Literal["empty-first", "populated-first"] | None = None
+    catalog_presentation: Literal["suggestions", "descriptions-only"] | None = None
     schema_requests: list[SchemaRequest] = Field(default_factory=list, max_length=20)
 
 
