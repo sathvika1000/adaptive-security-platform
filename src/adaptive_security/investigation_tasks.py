@@ -23,6 +23,7 @@ from adaptive_security.investigation_runner import (
     canonical,
 )
 from adaptive_security.investigation_tools import ToolName, ToolRequest, ToolResult
+from adaptive_security.request_guidance import RequestGuidance, validate_guidance
 from adaptive_security.schema_order import SchemaOrder, validate_order
 
 
@@ -132,6 +133,7 @@ class TaskOptions(TypedDict, total=False):
     linked_tests: bool
     linked_schema_order: SchemaOrder
     catalog_presentation: CatalogPresentation
+    request_guidance: RequestGuidance
 
 
 async def run_tasks(
@@ -145,11 +147,13 @@ async def run_tasks(
     linked_tests: bool = False,
     linked_schema_order: SchemaOrder = "empty-first",
     catalog_presentation: CatalogPresentation = "suggestions",
+    request_guidance: RequestGuidance = "baseline",
 ) -> dict[str, object]:
     if slow_local and model is None:
         raise ValueError("Slow local profile requires an Ollama model")
     validate_order(linked_schema_order, linked_tests=linked_tests)
     validate_catalog(catalog_presentation, linked_tests=linked_tests)
+    validate_guidance(request_guidance, linked_tests=linked_tests)
     suite = suite.model_copy(deep=True)
     rows = []
     statuses: Counter[str] = Counter()
@@ -164,6 +168,7 @@ async def run_tasks(
                     request_timeout_seconds=85.0 if slow_local else 25.0,
                     linked_schema_order=linked_schema_order,
                     catalog_presentation=catalog_presentation,
+                    request_guidance=request_guidance,
                 )
             else:
                 adapter = (
@@ -228,6 +233,7 @@ async def run_tasks(
         ).hexdigest(),
         "linked_schema_order": linked_schema_order if linked_tests else None,
         "catalog_presentation": catalog_presentation if linked_tests else None,
+        "request_guidance": request_guidance if linked_tests else None,
         "source_sha256": {
             name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
             for name in (
@@ -237,6 +243,7 @@ async def run_tasks(
                 "grounded_schema.py",
                 "schema_order.py",
                 "catalog_context.py",
+                "request_guidance.py",
                 "evidence_requests.py",
                 "request_scope.py",
                 "statement_tests.py",

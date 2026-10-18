@@ -9,6 +9,7 @@ from pathlib import Path
 
 from adaptive_security.catalog_context import CatalogPresentation, validate_catalog
 from adaptive_security.investigation_tasks import TaskOptions, TaskSuite, run_tasks
+from adaptive_security.request_guidance import RequestGuidance, validate_guidance
 from adaptive_security.schema_order import SchemaOrder, validate_order
 from adaptive_security.task_review import TaskReport, prepare, write_private
 
@@ -51,11 +52,13 @@ async def create_session(
     linked_tests: bool = False,
     linked_schema_order: SchemaOrder = "empty-first",
     catalog_presentation: CatalogPresentation = "suggestions",
+    request_guidance: RequestGuidance = "baseline",
 ) -> bool:
     if slow_local and model is None:
         raise ValueError("Slow local profile requires an Ollama model")
     validate_order(linked_schema_order, linked_tests=linked_tests)
     validate_catalog(catalog_presentation, linked_tests=linked_tests)
+    validate_guidance(request_guidance, linked_tests=linked_tests)
     shared_request_scope = shared_request_scope or linked_tests
     scoped_requests = scoped_requests or shared_request_scope
     structured_requests = structured_requests or scoped_requests
@@ -85,6 +88,7 @@ async def create_session(
             "linked_tests": linked_tests,
             "linked_schema_order": linked_schema_order if linked_tests else None,
             "catalog_presentation": catalog_presentation if linked_tests else None,
+            "request_guidance": request_guidance if linked_tests else None,
             "state": "started-not-complete",
         },
     )
@@ -108,6 +112,8 @@ async def create_session(
             options["linked_schema_order"] = linked_schema_order
         if catalog_presentation != "suggestions":
             options["catalog_presentation"] = catalog_presentation
+        if request_guidance != "baseline":
+            options["request_guidance"] = request_guidance
         report = await run_tasks(suite, model, **options)
         report["suite_file_sha256"] = suite_digest
         parsed = TaskReport.model_validate(report)
@@ -136,6 +142,7 @@ async def create_session(
                 "linked_tests": linked_tests,
                 "linked_schema_order": linked_schema_order if linked_tests else None,
                 "catalog_presentation": catalog_presentation if linked_tests else None,
+                "request_guidance": request_guidance if linked_tests else None,
                 "bundled_suite_sha256": suite_digest,
                 "artifact_sha256": artifacts,
                 "run_summary": report["summary"],

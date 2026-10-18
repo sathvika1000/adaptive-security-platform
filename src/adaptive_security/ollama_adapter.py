@@ -4,7 +4,7 @@ import hashlib
 import json
 import math
 import re
-from typing import Annotated
+from typing import Annotated, Any
 
 import httpx2
 from pydantic import BaseModel, ConfigDict, Field
@@ -23,6 +23,12 @@ from adaptive_security.investigation_runner import (
     SchemaRequest,
     ToolStep,
     canonical,
+)
+from adaptive_security.request_guidance import (
+    RequestGuidance,
+    apply_guidance,
+    normalized_guidance_payload,
+    validate_guidance,
 )
 from adaptive_security.schema_order import SchemaOrder, validate_order
 
@@ -104,6 +110,7 @@ class OllamaAdapter:
         request_timeout_seconds: float = 25.0,
         linked_schema_order: SchemaOrder = "empty-first",
         catalog_presentation: CatalogPresentation = "suggestions",
+        request_guidance: RequestGuidance = "baseline",
     ) -> None:
         if (
             not re.fullmatch(r"[a-z0-9][a-z0-9._:-]{0,47}", model)
@@ -124,6 +131,8 @@ class OllamaAdapter:
         self.linked_schema_order = linked_schema_order
         validate_catalog(catalog_presentation)
         self.catalog_presentation = catalog_presentation
+        validate_guidance(request_guidance)
+        self.request_guidance = request_guidance
         self.request_timeout_seconds = request_timeout_seconds
         self.model = model
         self.transport = transport
@@ -184,12 +193,16 @@ class OllamaAdapter:
             raise RunStopped("budget_exhausted", "Local model context exceeds 16 KiB")
         if self.stats.charged_tokens + CALL_RESERVATION > self.stats.token_limit:
             raise RunStopped("budget_exhausted", "Model token reservation budget exhausted")
+        validate_guidance(
+            self.request_guidance,
+            linked_tests=json.loads(context_json).get("linked_tests") is True,
+        )
         schema = grounded_schema(
             ModelDecision.model_json_schema(), context_json,
             linked_schema_order=self.linked_schema_order,
         )
         model_context = catalog_context(context_json, self.catalog_presentation)
-        payload = {
+        payload: dict[str, Any] = {
             "model": self.model,
             "stream": False,
             "format": schema,
@@ -245,6 +258,9 @@ class OllamaAdapter:
             ],
             "options": {"temperature": 0, "num_ctx": CONTEXT_TOKENS, "num_predict": OUTPUT_TOKENS},
         }
+        payload["messages"][0]["content"] = apply_guidance(
+            payload["messages"][0]["content"], self.request_guidance,
+        )
         async with httpx2.AsyncClient(
             trust_env=False,
             follow_redirects=False,
@@ -281,6 +297,7 @@ class OllamaAdapter:
             if json.loads(context_json).get("linked_tests") is True:
                 self.stats.linked_schema_order = self.linked_schema_order
                 self.stats.catalog_presentation = self.catalog_presentation
+                self.stats.request_guidance = self.request_guidance
                 normalized = json.loads(json.dumps(schema))
                 branches = normalized["$defs"]["Conclusion"]["anyOf"]
                 branches.sort(key=canonical)
@@ -290,6 +307,10 @@ class OllamaAdapter:
                     }),
                     catalog_normalized_payload_sha256=_request_digest({
                         key: value for key, value in normalized_catalog_payload(payload).items()
+                        if key != "format"
+                    }),
+                    guidance_normalized_payload_sha256=_request_digest({
+                        key: value for key, value in normalized_guidance_payload(payload).items()
                         if key != "format"
                     }),
                     format_sha256=_request_digest(schema),

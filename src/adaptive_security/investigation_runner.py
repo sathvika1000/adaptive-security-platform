@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Annotated, Literal, Protocol, cast
+from typing import Annotated, Literal, Protocol, TypeAlias, cast
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
@@ -49,7 +49,8 @@ class Conclusion(StrictModel):
     next_checks: list[BoundedExplanation] = Field(default_factory=list, max_length=3)
 
 
-Decision = Annotated[ToolStep | Conclusion, Field(discriminator="kind")]
+# Preserve the eager runtime alias while making its TypeForm intent explicit.
+Decision: TypeAlias = Annotated[ToolStep | Conclusion, Field(discriminator="kind")]  # noqa: UP040
 _DECISION: TypeAdapter[ToolStep | Conclusion] = TypeAdapter(Decision)
 
 
@@ -73,6 +74,9 @@ class SchemaRequest(StrictModel):
     non_format_payload_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     format_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     order_normalized_format_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    guidance_normalized_payload_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$",
+    )
     catalog_normalized_payload_sha256: str | None = Field(
         default=None, pattern=r"^[0-9a-f]{64}$",
     )
@@ -89,6 +93,7 @@ class AdapterUsage(StrictModel):
     metadata_sha256: str | None = None
     linked_schema_order: Literal["empty-first", "populated-first"] | None = None
     catalog_presentation: Literal["suggestions", "descriptions-only"] | None = None
+    request_guidance: Literal["baseline", "questions"] | None = None
     schema_requests: list[SchemaRequest] = Field(default_factory=list, max_length=20)
 
 

@@ -327,3 +327,13 @@ ready-written evidence_needed sentences. Keep descriptions, IDs, sources, schema
 outside those fields, and controller checks fixed. Record normalized payload hashes, actual
 presentation metadata, complete accepted answers and exact wording overlap without grading
 quality. See `CATALOG_SUGGESTION_COMPARISON.md`; old runs remain unchanged.
+
+
+### Evidence-request question-guidance probe
+
+The descriptions-only catalog arm often returned source labels instead of inspection goals.
+Compare baseline instructions with one added question-guidance segment, keeping suggestions
+removed and holding schemas, scope, facts, budgets and controller validation fixed. Record
+actual guidance profiles and hashes normalized only for that exact instruction suffix. Reuse
+the paired collector, retain accepted answers and separate reviews, and reject combined
+experiments. See `REQUEST_GUIDANCE_COMPARISON.md`; changed wording is not semantic approval.
