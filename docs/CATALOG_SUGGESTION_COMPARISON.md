@@ -103,3 +103,12 @@ Complete each arm's separate review only after inspecting its report. This small
 pair does not provide held-out detection performance, production readiness or prompt-injection
 resistance. Completion, more hypotheses, changed wording or fewer suggestion matches do not
 establish semantic improvement. `--smoke` bypasses local inference and tests plumbing only.
+
+
+## Follow-up on underspecified goals
+
+The first descriptions-only Mac arm completed all tasks but often emitted bare source labels
+or unverified status shorthand as request goals. See the
+[request question-guidance comparison](REQUEST_GUIDANCE_COMPARISON.md) for a new instruction-only
+probe with suggestions removed in both arms. Existing catalog-pair sessions remain unchanged;
+zero exact suggestion matches does not establish useful investigation planning.
