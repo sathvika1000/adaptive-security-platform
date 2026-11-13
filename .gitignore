@@ -36,3 +36,8 @@ dist/
 node_modules/
 playwright-report/
 test-results/
+
+# Private runtime configuration and credential files
+*.env
+*.p12
+*.pfx
